@@ -1,29 +1,30 @@
 {
-  "name": "guttasjefen",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "version": "12.5.1",
-      "onFail": "download"
-    }
-  },
-  "packageManager": "pnpm@12.5.1",
-  "type": "module",
-  "dependencies": {
-    "discord.js": "^14.27.0"
-  },
-  "devDependencies": {
-    "@types/node": "^26.6.2",
-    "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
-  }
+	"name": "guttasjefen",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.ts",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"devEngines": {
+		"packageManager": {
+			"name": "pnpm",
+			"version": "12.5.1",
+			"onFail": "download"
+		}
+	},
+	"packageManager": "pnpm@12.5.1",
+	"type": "module",
+	"dependencies": {
+		"discord.js": "^14.27.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.14",
+		"@types/node": "^26.6.2",
+		"tsx": "^4.23.13",
+		"typescript": "^7.0.2"
+	}
 }
