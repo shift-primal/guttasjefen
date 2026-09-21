@@ -5,6 +5,7 @@ import { ALLOWED_CHANNEL_KEYWORDS, CMD_PREFIX } from "#/constants";
 import type { Command, CommandContext } from "#/types";
 import { handleControl } from "#/ui/controls";
 import { formatArgument } from "#/ui/format";
+import { handleQueuePage } from "#/ui/queue";
 
 async function runCommand(command: Command, ctx: CommandContext) {
 	try {
@@ -62,6 +63,7 @@ export function registerHandlers(client: Client) {
 		if (interaction.isButton()) {
 			try {
 				await handleControl(interaction);
+				await handleQueuePage(interaction);
 			} catch (error) {
 				console.error(error);
 			}

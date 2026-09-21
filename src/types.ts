@@ -1,4 +1,15 @@
-import type { Guild, GuildMember, TextBasedChannel } from "discord.js";
+import type {
+	ActionRowBuilder,
+	ButtonBuilder,
+	Guild,
+	GuildMember,
+	TextBasedChannel,
+} from "discord.js";
+
+export interface ReplyOptions {
+	ephemeral?: boolean;
+	components?: ActionRowBuilder<ButtonBuilder>[];
+}
 
 export interface CommandContext {
 	guild: Guild;
@@ -6,7 +17,7 @@ export interface CommandContext {
 	channel: TextBasedChannel | null;
 	args: string;
 	defer(): Promise<void>;
-	reply(content: string, options?: { ephemeral?: boolean }): Promise<void>;
+	reply(content: string, options?: ReplyOptions): Promise<void>;
 }
 
 export interface Command {

@@ -25,10 +25,14 @@ export function fromInteraction(
 		},
 		async reply(content, options) {
 			if (interaction.deferred || interaction.replied) {
-				await interaction.editReply(content);
+				await interaction.editReply({
+					content,
+					components: options?.components,
+				});
 			} else {
 				await interaction.reply({
 					content,
+					components: options?.components,
 					flags: options?.ephemeral ? MessageFlags.Ephemeral : undefined,
 				});
 			}
@@ -50,8 +54,8 @@ export function fromMessage(
 		async defer() {
 			if ("sendTyping" in message.channel) await message.channel.sendTyping();
 		},
-		async reply(content) {
-			await message.reply(content);
+		async reply(content, options) {
+			await message.reply({ content, components: options?.components });
 		},
 	};
 }
