@@ -1,11 +1,27 @@
 import { InteractionContextType, SlashCommandBuilder } from "discord.js";
+import { loop } from "#/commands/loop";
+import { nowplaying } from "#/commands/nowplaying";
+import { pause } from "#/commands/pause";
 import { ping } from "#/commands/ping";
 import { play } from "#/commands/play";
+import { queue } from "#/commands/queue";
+import { shuffle } from "#/commands/shuffle";
+import { skip } from "#/commands/skip";
+import { stop } from "#/commands/stop";
 import type { Command, CommandContext } from "#/types";
 
-export const commands: Command[] = [ping, play];
+export const commands: Command[] = [
+	ping,
+	play,
+	pause,
+	skip,
+	stop,
+	nowplaying,
+	queue,
+	shuffle,
+	loop,
+];
 
-// Lookup by name and alias, for `-` commands.
 const byName = new Map<string, Command>(
 	commands.flatMap((c) => [c.name, ...(c.aliases ?? [])].map((n) => [n, c])),
 );
@@ -14,7 +30,6 @@ export function findCommand(name: string): Command | undefined {
 	return byName.get(name.toLowerCase());
 }
 
-/** Slash command definition derived from a Command. */
 export function toSlashJSON(command: Command) {
 	const builder = new SlashCommandBuilder()
 		.setName(command.name)

@@ -40,13 +40,22 @@ export const play: Command = {
 			return;
 		}
 
-		// Searching/extracting can exceed Discord's 3s reply window.
 		await ctx.defer();
 
 		try {
 			const player = useMainPlayer();
 			const result = await player.play(voiceChannel, query, {
-				nodeOptions: { metadata: { channel } },
+				nodeOptions: {
+					metadata: { channel },
+					disableVolume: true,
+					disableEqualizer: true,
+					disableFilterer: true,
+					disableBiquad: true,
+					disableResampler: true,
+					disableCompressor: true,
+					disableReverb: true,
+					disableSeeker: true,
+				},
 			});
 			await ctx.reply(`${result.track.title} has been added to the queue!`);
 		} catch (error) {

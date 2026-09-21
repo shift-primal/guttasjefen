@@ -1,0 +1,15 @@
+import { requireQueue } from "#/commands/queue-guard";
+import type { Command } from "#/types";
+
+export const stop: Command = {
+	name: "stop",
+	aliases: ["leave", "dc"],
+	description: "Stop playing, clear the queue and leave the voice channel",
+	async run(ctx) {
+		const queue = await requireQueue(ctx);
+		if (!queue) return;
+
+		queue.delete();
+		await ctx.reply("Stopped the music and cleared the queue.");
+	},
+};
