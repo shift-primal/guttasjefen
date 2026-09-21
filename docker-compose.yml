@@ -1,0 +1,6 @@
+services:
+  bot:
+    build: .
+    container_name: guttasjefen
+    restart: unless-stopped
+    env_file: .env
