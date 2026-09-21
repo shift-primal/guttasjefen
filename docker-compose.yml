@@ -7,4 +7,4 @@ services:
     environment:
       YOUTUBE_COOKIES_PATH: /app/cookies.txt
     volumes:
-      - ./cookies.txt:/app/cookies.txt
+      - ./cookies.txt:/app/cookies.txt:ro
