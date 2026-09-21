@@ -7,6 +7,7 @@ import { play } from "#/commands/play";
 import { playNext } from "#/commands/playnext";
 import { playNow } from "#/commands/playnow";
 import { queue } from "#/commands/queue";
+import { remove } from "#/commands/remove";
 import { resume } from "#/commands/resume";
 import { shuffle } from "#/commands/shuffle";
 import { skip } from "#/commands/skip";
@@ -23,6 +24,7 @@ export const commands: Command[] = [
 	resume,
 	skip,
 	skipTo,
+	remove,
 	stop,
 	nowplaying,
 	queue,

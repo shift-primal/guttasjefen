@@ -1,7 +1,7 @@
 import { commands } from "#/commands";
-import { CMD_PREFIX } from "#/constants";
-import { formatArgument } from "#/format";
+import { ALLOWED_CHANNEL_KEYWORDS, CMD_PREFIX } from "#/constants";
 import type { Command } from "#/types";
+import { formatArgument } from "#/ui/format";
 
 export const help: Command = {
 	name: "help",
@@ -18,6 +18,10 @@ export const help: Command = {
 		});
 
 		lines.push("\nEvery command also works as a slash command, e.g. `/play`.");
+
+		lines.push(
+			`Prefix commands only work in channels with ${ALLOWED_CHANNEL_KEYWORDS.map((k) => `"${k}"`).join(", ")} in the name.`,
+		);
 
 		await ctx.reply(lines.join("\n \n"));
 	},

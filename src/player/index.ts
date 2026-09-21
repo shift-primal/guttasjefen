@@ -4,6 +4,7 @@ import { Player } from "discord-player";
 import { YoutubeExtractor } from "discord-player-youtubei";
 import { env } from "#/env";
 import { CustomSpotifyExtractor } from "#/extractors/spotify-extractor";
+import { registerAnnouncements } from "#/player/announcements";
 
 export async function setupPlayer(client: Client) {
 	const player = new Player(client);
@@ -14,21 +15,7 @@ export async function setupPlayer(client: Client) {
 		DefaultExtractors.filter((extractor) => extractor !== SpotifyExtractor),
 	);
 
-	player.events.on("error", (_queue, error) => {
-		console.error("[queue error]", error);
-	});
-
-	player.events.on("playerError", (_queue, error, track) => {
-		console.error(`[player error] ${track.title}`, error);
-	});
-
-	player.events.on("playerStart", (_queue, track) => {
-		console.log(`[start] ${track.title}`);
-	});
-
-	player.events.on("playerFinish", (_queue, track) => {
-		console.log(`[finish] ${track.title}`);
-	});
+	registerAnnouncements(player);
 
 	if (env.DEBUG_PLAYER) {
 		player.events.on("debug", (_queue, message) =>

@@ -1,6 +1,6 @@
 import { requireQueue } from "#/commands/guards";
-import { formatNowPlaying } from "#/format";
 import type { Command } from "#/types";
+import { formatNowPlaying } from "#/ui/format";
 
 export const nowplaying: Command = {
 	name: "nowplaying",

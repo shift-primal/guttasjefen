@@ -10,8 +10,7 @@
 	},
 	"scripts": {
 		"start": "tsx src/index.ts",
-		"deploy-commands": "tsx src/deploy-commands.ts",
-		"test": "echo \"Error: no test specified\" && exit 1"
+		"deploy-commands": "tsx src/deploy-commands.ts"
 	},
 	"devEngines": {
 		"packageManager": {

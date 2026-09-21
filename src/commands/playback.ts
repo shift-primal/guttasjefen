@@ -1,26 +1,12 @@
 import type { VoiceBasedChannel } from "discord.js";
-import {
-	type GuildQueue,
-	QueueRepeatMode,
-	useMainPlayer,
-	useQueue,
-} from "discord-player";
+import { type GuildQueue, useMainPlayer, useQueue } from "discord-player";
 import { requireVoiceChannel } from "#/commands/guards";
-import { formatNowPlaying, formatPlaylist, formatTrack } from "#/format";
+import { QUEUE_OPTIONS } from "#/player/queue-options";
+import { skipCurrent } from "#/player/skip";
 import type { CommandContext } from "#/types";
+import { formatPlaylist, formatTrack } from "#/ui/format";
 
 export type EnqueueMode = "end" | "next" | "now";
-
-const NODE_OPTIONS = {
-	disableVolume: true,
-	disableEqualizer: true,
-	disableFilterer: true,
-	disableBiquad: true,
-	disableResampler: true,
-	disableCompressor: true,
-	disableReverb: true,
-	disableSeeker: true,
-} as const;
 
 export async function enqueue(ctx: CommandContext, mode: EnqueueMode) {
 	const voiceChannel = await requireVoiceChannel(ctx);
@@ -46,7 +32,7 @@ async function playAtEnd(ctx: CommandContext, voiceChannel: VoiceBasedChannel) {
 	const { track, queue, searchResult } = await useMainPlayer().play(
 		voiceChannel,
 		ctx.args,
-		{ nodeOptions: { metadata: { channel: ctx.channel }, ...NODE_OPTIONS } },
+		{ nodeOptions: { metadata: { channel: ctx.channel }, ...QUEUE_OPTIONS } },
 	);
 	const { playlist } = searchResult;
 	const isPlayingNow = queue.currentTrack?.id === track.id;
@@ -54,7 +40,7 @@ async function playAtEnd(ctx: CommandContext, voiceChannel: VoiceBasedChannel) {
 		queue.tracks.toArray().findIndex((t) => t.id === track.id) + 1;
 
 	const trackLine = isPlayingNow
-		? formatNowPlaying(track)
+		? `🔎 **Loaded:** ${formatTrack(track)}`
 		: `➕ **${playlist ? "Starts at" : "Added to queue"} #${position}:** ${formatTrack(track)}`;
 
 	await ctx.reply(
@@ -95,26 +81,4 @@ async function playAhead(
 		);
 	}
 	await ctx.reply(lines.join("\n"));
-}
-
-export function skipCurrent(queue: GuildQueue): boolean {
-	if (queue.repeatMode !== QueueRepeatMode.TRACK) return queue.node.skip();
-
-	const events = useMainPlayer().events;
-	const restore = () => {
-		clearTimeout(fallback);
-		events.off("playerFinish", onFinish);
-		queue.setRepeatMode(QueueRepeatMode.TRACK);
-	};
-	const onFinish = (finished: GuildQueue) => {
-		if (finished.guild.id === queue.guild.id) setImmediate(restore);
-	};
-	const fallback = setTimeout(restore, 3000);
-
-	queue.setRepeatMode(QueueRepeatMode.OFF);
-	events.on("playerFinish", onFinish);
-
-	const skipped = queue.node.skip();
-	if (!skipped) restore();
-	return skipped;
 }

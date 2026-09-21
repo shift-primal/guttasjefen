@@ -1,6 +1,6 @@
 import { requireQueue } from "#/commands/guards";
-import { formatNowPlaying, formatTrack } from "#/format";
 import type { Command } from "#/types";
+import { formatNowPlaying, formatTrack } from "#/ui/format";
 
 const PAGE_SIZE = 10;
 

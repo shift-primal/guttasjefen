@@ -1,27 +1,6 @@
-import { QueueRepeatMode } from "discord-player";
 import { refuse, requireQueue } from "#/commands/guards";
+import { MODES, nextRepeatMode } from "#/player/repeat-mode";
 import type { Command } from "#/types";
-
-const MODES = [
-	{ mode: QueueRepeatMode.OFF, names: ["off"], label: "off" },
-	{
-		mode: QueueRepeatMode.TRACK,
-		names: ["track", "song"],
-		label: "repeating the current track",
-	},
-	{
-		mode: QueueRepeatMode.QUEUE,
-		names: ["queue"],
-		label: "repeating the queue",
-	},
-	{ mode: QueueRepeatMode.AUTOPLAY, names: ["autoplay"], label: "autoplay" },
-];
-
-const CYCLE: QueueRepeatMode[] = [
-	QueueRepeatMode.OFF,
-	QueueRepeatMode.TRACK,
-	QueueRepeatMode.QUEUE,
-];
 
 export const loop: Command = {
 	name: "loop",
@@ -36,7 +15,7 @@ export const loop: Command = {
 		if (!queue) return;
 
 		const requested = ctx.args.toLowerCase();
-		const next = CYCLE[(CYCLE.indexOf(queue.repeatMode) + 1) % CYCLE.length];
+		const next = nextRepeatMode(queue.repeatMode);
 		const chosen = requested
 			? MODES.find((m) => m.names.includes(requested))
 			: MODES.find((m) => m.mode === next);

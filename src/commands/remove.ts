@@ -1,13 +1,12 @@
 import { findTrack } from "#/commands/find-track";
 import { refuse, requireQueue } from "#/commands/guards";
-import { skipToTrack } from "#/player/skip";
 import type { Command } from "#/types";
 import { formatTrack } from "#/ui/format";
 
-export const skipTo: Command = {
-	name: "skipto",
-	aliases: ["st", "goto"],
-	description: "Skip to a track in the queue, by its number or name",
+export const remove: Command = {
+	name: "remove",
+	aliases: ["rm"],
+	description: "Remove a track from the queue, by its number or name",
 	argument: {
 		name: "track",
 		description: "Queue number or part of the title",
@@ -19,7 +18,7 @@ export const skipTo: Command = {
 
 		const upcoming = queue.tracks.toArray();
 		if (upcoming.length === 0) {
-			return refuse(ctx, "There is nothing queued to skip to.");
+			return refuse(ctx, "There is nothing queued to remove.");
 		}
 
 		const target = findTrack(upcoming, ctx.args);
@@ -30,11 +29,9 @@ export const skipTo: Command = {
 			);
 		}
 
-		if (!skipToTrack(queue, target)) {
-			return refuse(ctx, "Could not skip to that track.");
-		}
+		queue.removeTrack(target);
 
 		const position = upcoming.indexOf(target) + 1;
-		await ctx.reply(`⏭️ **Skipped to #${position}:** ${formatTrack(target)}`);
+		await ctx.reply(`🗑️ **Removed #${position}:** ${formatTrack(target)}`);
 	},
 };

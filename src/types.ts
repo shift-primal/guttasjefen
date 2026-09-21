@@ -16,3 +16,7 @@ export interface Command {
 	argument?: { name: string; description: string; required?: boolean };
 	run(ctx: CommandContext): Promise<void>;
 }
+
+export interface QueueMetadata {
+	channel: TextBasedChannel | null;
+}
