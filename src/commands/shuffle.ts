@@ -1,4 +1,4 @@
-import { requireQueue } from "#/commands/queue-guard";
+import { refuse, requireQueue } from "#/commands/guards";
 import type { Command } from "#/types";
 
 export const shuffle: Command = {
@@ -10,10 +10,7 @@ export const shuffle: Command = {
 		if (!queue) return;
 
 		if (queue.tracks.size < 2) {
-			await ctx.reply("Not enough tracks in the queue to shuffle.", {
-				ephemeral: true,
-			});
-			return;
+			return refuse(ctx, "Not enough tracks in the queue to shuffle.");
 		}
 
 		queue.tracks.shuffle();

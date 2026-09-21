@@ -1,11 +1,12 @@
 import { escapeMarkdown } from "discord.js";
 import type { Playlist, Track } from "discord-player";
+import type { Command } from "#/types";
 
 function escapeLabel(text: string) {
 	return escapeMarkdown(text).replace(/[[\]]/g, "\\$&");
 }
 
-export function formatDuration(duration: string): string | null {
+function formatDuration(duration: string): string | null {
 	const shortened = duration.replace(/^0(?=\d)/, "");
 	return shortened === "0:00" ? null : shortened;
 }
@@ -30,4 +31,12 @@ export function formatTrack(track: Track): string {
 
 export function formatPlaylist(playlist: Playlist): string {
 	return `[${escapeLabel(playlist.title)}](<${playlist.url}>)`;
+}
+
+export function formatNowPlaying(track: Track): string {
+	return `▶️ **Now playing:** ${formatTrack(track)}`;
+}
+
+export function formatArgument(argument: NonNullable<Command["argument"]>) {
+	return argument.required ? `<${argument.name}>` : `[${argument.name}]`;
 }

@@ -1,5 +1,5 @@
-import { requireQueue } from "#/commands/queue-guard";
-import { formatTrack } from "#/format";
+import { requireQueue } from "#/commands/guards";
+import { formatNowPlaying } from "#/format";
 import type { Command } from "#/types";
 
 export const nowplaying: Command = {
@@ -8,13 +8,11 @@ export const nowplaying: Command = {
 	description: "Show the track that is playing right now",
 	async run(ctx) {
 		const queue = await requireQueue(ctx, { sameChannel: false });
-		if (!queue?.currentTrack) return;
+		if (!queue) return;
 
 		const bar = queue.node.createProgressBar();
 		await ctx.reply(
-			[`▶️ **Now playing:** ${formatTrack(queue.currentTrack)}`, bar]
-				.filter(Boolean)
-				.join("\n"),
+			[formatNowPlaying(queue.currentTrack), bar].filter(Boolean).join("\n"),
 		);
 	},
 };

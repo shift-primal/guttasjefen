@@ -1,4 +1,6 @@
 import { commands } from "#/commands";
+import { CMD_PREFIX } from "#/constants";
+import { formatArgument } from "#/format";
 import type { Command } from "#/types";
 
 export const help: Command = {
@@ -6,17 +8,13 @@ export const help: Command = {
 	aliases: ["h", "?"],
 	description: "Show help and list available commands",
 	async run(ctx) {
-		// Plain markdown wraps to any screen width, unlike a fixed-width table.
 		const lines = commands.map((cmd) => {
-			const arg = cmd.argument
-				? ` \`${cmd.argument.required ? `<${cmd.argument.name}>` : `[${cmd.argument.name}]`}\``
-				: "";
+			const arg = cmd.argument ? ` \`${formatArgument(cmd.argument)}\`` : "";
 			const aliases = cmd.aliases?.length
-				? ` (${cmd.aliases.map((alias) => `-${alias}`).join(", ")})`
+				? ` (${cmd.aliases.map((alias) => `${CMD_PREFIX}${alias}`).join(", ")})`
 				: "";
 
-			// "-#" is Discord's small grey subtext.
-			return `**-${cmd.name}**${arg}${aliases}\n-# ${cmd.description}`;
+			return `**${CMD_PREFIX}${cmd.name}**${arg}${aliases}\n-# ${cmd.description}`;
 		});
 
 		lines.push("\nEvery command also works as a slash command, e.g. `/play`.");

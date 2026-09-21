@@ -1,5 +1,5 @@
-import { requireQueue } from "#/commands/queue-guard";
-import { formatTrack } from "#/format";
+import { requireQueue } from "#/commands/guards";
+import { formatNowPlaying, formatTrack } from "#/format";
 import type { Command } from "#/types";
 
 const PAGE_SIZE = 10;
@@ -9,18 +9,16 @@ export const queue: Command = {
 	aliases: ["q"],
 	description: "Show the current queue",
 	async run(ctx) {
-		const guildQueue = await requireQueue(ctx, { sameChannel: false });
-		if (!guildQueue?.currentTrack) return;
+		const activeQueue = await requireQueue(ctx, { sameChannel: false });
+		if (!activeQueue) return;
 
-		const upcoming = guildQueue.tracks.toArray();
-		const lines = [
-			`▶️ **Now playing:** ${formatTrack(guildQueue.currentTrack)}`,
-		];
+		const upcoming = activeQueue.tracks.toArray();
+		const lines = [formatNowPlaying(activeQueue.currentTrack), ""];
 
 		if (upcoming.length === 0) {
-			lines.push("", "The queue is empty.");
+			lines.push("The queue is empty.");
 		} else {
-			lines.push("", "**Up next:**");
+			lines.push("**Up next:**");
 			for (const [i, track] of upcoming.slice(0, PAGE_SIZE).entries()) {
 				lines.push(`${i + 1}. ${formatTrack(track)}`);
 			}

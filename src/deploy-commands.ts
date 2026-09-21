@@ -1,14 +1,9 @@
 import { REST, Routes } from "discord.js";
-import { config } from "dotenv";
+import { commands } from "#/commands";
+import { toSlashJSON } from "#/commands/slash";
+import { deployEnv } from "#/env";
 
-import { commands, toSlashJSON } from "#/commands";
-
-config({ path: [".env.local", ".env"] });
-
-const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID } = process.env;
-if (!DISCORD_TOKEN || !CLIENT_ID || !GUILD_ID) {
-	throw new Error("Missing DISCORD_TOKEN, CLIENT_ID or GUILD_ID in .env");
-}
+const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID } = deployEnv();
 
 const body = commands.map(toSlashJSON);
 

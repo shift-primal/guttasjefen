@@ -1,4 +1,4 @@
-import { requireQueue } from "#/commands/queue-guard";
+import { refuse, requireQueue } from "#/commands/guards";
 import type { Command } from "#/types";
 
 export const resume: Command = {
@@ -9,10 +9,7 @@ export const resume: Command = {
 		const queue = await requireQueue(ctx);
 		if (!queue) return;
 
-		if (!queue.node.isPaused()) {
-			await ctx.reply("Nothing is paused.", { ephemeral: true });
-			return;
-		}
+		if (!queue.node.isPaused()) return refuse(ctx, "Nothing is paused.");
 
 		queue.node.setPaused(false);
 		await ctx.reply("▶️ Resumed.");

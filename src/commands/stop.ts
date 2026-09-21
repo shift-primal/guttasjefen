@@ -1,4 +1,4 @@
-import { requireQueue } from "#/commands/queue-guard";
+import { requireQueue } from "#/commands/guards";
 import type { Command } from "#/types";
 
 export const stop: Command = {

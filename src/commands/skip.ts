@@ -1,5 +1,6 @@
-import { requireQueue } from "#/commands/queue-guard";
-import { formatTrack } from "#/format";
+import { requireQueue } from "#/commands/guards";
+import { skipCurrent } from "#/commands/playback";
+import { formatNowPlaying, formatTrack } from "#/format";
 import type { Command } from "#/types";
 
 export const skip: Command = {
@@ -11,18 +12,16 @@ export const skip: Command = {
 		if (!queue) return;
 
 		const skipped = queue.currentTrack;
+
 		const [next] = queue.tracks.toArray();
 
-		queue.node.skip();
+		skipCurrent(queue);
 
-		const lines = [
-			`⏭️ **Skipped:** ${skipped ? formatTrack(skipped) : "nothing"}`,
-		];
-		lines.push(
-			next
-				? `▶️ **Now playing:** ${formatTrack(next)}`
-				: "The queue is now empty.",
+		await ctx.reply(
+			[
+				`⏭️ **Skipped:** ${formatTrack(skipped)}`,
+				next ? formatNowPlaying(next) : "The queue is now empty.",
+			].join("\n"),
 		);
-		await ctx.reply(lines.join("\n"));
 	},
 };

@@ -1,26 +1,27 @@
 import { QueueRepeatMode } from "discord-player";
-import { requireQueue } from "#/commands/queue-guard";
+import { refuse, requireQueue } from "#/commands/guards";
 import type { Command } from "#/types";
 
-const MODES: Record<string, QueueRepeatMode> = {
-	off: QueueRepeatMode.OFF,
-	track: QueueRepeatMode.TRACK,
-	song: QueueRepeatMode.TRACK,
-	queue: QueueRepeatMode.QUEUE,
-	autoplay: QueueRepeatMode.AUTOPLAY,
-};
+const MODES = [
+	{ mode: QueueRepeatMode.OFF, names: ["off"], label: "off" },
+	{
+		mode: QueueRepeatMode.TRACK,
+		names: ["track", "song"],
+		label: "repeating the current track",
+	},
+	{
+		mode: QueueRepeatMode.QUEUE,
+		names: ["queue"],
+		label: "repeating the queue",
+	},
+	{ mode: QueueRepeatMode.AUTOPLAY, names: ["autoplay"], label: "autoplay" },
+];
 
-const LABELS: Record<QueueRepeatMode, string> = {
-	[QueueRepeatMode.OFF]: "off",
-	[QueueRepeatMode.TRACK]: "repeating the current track",
-	[QueueRepeatMode.QUEUE]: "repeating the queue",
-	[QueueRepeatMode.AUTOPLAY]: "autoplay",
-};
-
-const NEXT: Partial<Record<QueueRepeatMode, QueueRepeatMode>> = {
-	[QueueRepeatMode.OFF]: QueueRepeatMode.TRACK,
-	[QueueRepeatMode.TRACK]: QueueRepeatMode.QUEUE,
-};
+const CYCLE: QueueRepeatMode[] = [
+	QueueRepeatMode.OFF,
+	QueueRepeatMode.TRACK,
+	QueueRepeatMode.QUEUE,
+];
 
 export const loop: Command = {
 	name: "loop",
@@ -34,21 +35,16 @@ export const loop: Command = {
 		const queue = await requireQueue(ctx);
 		if (!queue) return;
 
-		let mode: QueueRepeatMode;
-		if (ctx.args) {
-			const parsed = MODES[ctx.args.toLowerCase()];
-			if (parsed === undefined) {
-				await ctx.reply("Mode must be one of: off, track, queue, autoplay.", {
-					ephemeral: true,
-				});
-				return;
-			}
-			mode = parsed;
-		} else {
-			mode = NEXT[queue.repeatMode] ?? QueueRepeatMode.OFF;
+		const requested = ctx.args.toLowerCase();
+		const next = CYCLE[(CYCLE.indexOf(queue.repeatMode) + 1) % CYCLE.length];
+		const chosen = requested
+			? MODES.find((m) => m.names.includes(requested))
+			: MODES.find((m) => m.mode === next);
+		if (!chosen) {
+			return refuse(ctx, "Mode must be one of: off, track, queue, autoplay.");
 		}
 
-		queue.setRepeatMode(mode);
-		await ctx.reply(`Loop: ${LABELS[mode]}.`);
+		queue.setRepeatMode(chosen.mode);
+		await ctx.reply(`Loop: ${chosen.label}.`);
 	},
 };

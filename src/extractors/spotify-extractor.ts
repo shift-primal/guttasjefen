@@ -1,5 +1,6 @@
 import { SpotifyExtractor } from "@discord-player/extractor";
 import type { SearchQueryType } from "discord-player";
+import { env } from "#/env";
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const SPOTIFY_LINK = /^(https?:\/\/open\.spotify\.com\/|spotify:)/;
@@ -11,8 +12,8 @@ export class CustomSpotifyExtractor extends SpotifyExtractor {
 
 	override async activate() {
 		this.internal.requestToken = async () => {
-			const { DP_SPOTIFY_CLIENT_ID: id, DP_SPOTIFY_CLIENT_SECRET: secret } =
-				process.env;
+			const id = env.DP_SPOTIFY_CLIENT_ID;
+			const secret = env.DP_SPOTIFY_CLIENT_SECRET;
 			if (!id || !secret) return null;
 
 			try {

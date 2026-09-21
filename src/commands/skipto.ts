@@ -1,5 +1,5 @@
 import type { Track } from "discord-player";
-import { requireQueue } from "#/commands/queue-guard";
+import { refuse, requireQueue } from "#/commands/guards";
 import { formatTrack } from "#/format";
 import type { Command } from "#/types";
 
@@ -39,27 +39,22 @@ export const skipTo: Command = {
 
 		const upcoming = queue.tracks.toArray();
 		if (upcoming.length === 0) {
-			await ctx.reply("There is nothing queued to skip to.", {
-				ephemeral: true,
-			});
-			return;
+			return refuse(ctx, "There is nothing queued to skip to.");
 		}
 
 		const target = findTrack(upcoming, ctx.args);
 		if (!target) {
-			await ctx.reply(
+			return refuse(
+				ctx,
 				`No track in the queue matches "${ctx.args}". Use its number from the queue command, or part of its title.`,
-				{ ephemeral: true },
 			);
-			return;
+		}
+
+		if (!queue.node.skipTo(target)) {
+			return refuse(ctx, "Could not skip to that track.");
 		}
 
 		const position = upcoming.indexOf(target) + 1;
-		if (!queue.node.skipTo(target)) {
-			await ctx.reply("Could not skip to that track.", { ephemeral: true });
-			return;
-		}
-
 		await ctx.reply(`⏭️ **Skipped to #${position}:** ${formatTrack(target)}`);
 	},
 };
