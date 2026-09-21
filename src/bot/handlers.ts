@@ -42,7 +42,7 @@ async function onMessage(message: Message) {
 	const ctx = command && fromMessage(message, parsed.args);
 	if (!command || !ctx) return;
 
-	if (!isAllowedChannel(message.channel.name)) {
+	if (command.name !== "help" && !isAllowedChannel(message.channel.name)) {
 		await ctx.reply(`Commands can only be used in ${ALLOWED_CHANNELS_TEXT}.`);
 		return;
 	}
