@@ -1,12 +1,15 @@
 import { InteractionContextType, SlashCommandBuilder } from "discord.js";
+import { help } from "#/commands/help";
 import { loop } from "#/commands/loop";
 import { nowplaying } from "#/commands/nowplaying";
 import { pause } from "#/commands/pause";
 import { ping } from "#/commands/ping";
 import { play } from "#/commands/play";
 import { queue } from "#/commands/queue";
+import { resume } from "#/commands/resume";
 import { shuffle } from "#/commands/shuffle";
 import { skip } from "#/commands/skip";
+import { skipTo } from "#/commands/skipto";
 import { stop } from "#/commands/stop";
 import type { Command, CommandContext } from "#/types";
 
@@ -14,12 +17,15 @@ export const commands: Command[] = [
 	ping,
 	play,
 	pause,
+	resume,
 	skip,
+	skipTo,
 	stop,
 	nowplaying,
 	queue,
 	shuffle,
 	loop,
+	help,
 ];
 
 const byName = new Map<string, Command>(

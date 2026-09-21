@@ -1,5 +1,6 @@
 import { PermissionsBitField } from "discord.js";
 import { useMainPlayer } from "discord-player";
+import { formatPlaylist, formatTrack } from "#/format";
 import type { Command } from "#/types";
 
 export const play: Command = {
@@ -57,7 +58,26 @@ export const play: Command = {
 					disableSeeker: true,
 				},
 			});
-			await ctx.reply(`${result.track.title} has been added to the queue!`);
+			const { track, queue, searchResult } = result;
+			const playlist = searchResult.playlist;
+			const isPlayingNow = queue.currentTrack?.id === track.id;
+			const position =
+				queue.tracks.toArray().findIndex((t) => t.id === track.id) + 1;
+
+			if (playlist) {
+				await ctx.reply(
+					`📃 **Added playlist** ${formatPlaylist(playlist)} · ${playlist.tracks.length} tracks\n` +
+						(isPlayingNow
+							? `▶️ **Now playing:** ${formatTrack(track)}`
+							: `➕ **Starts at #${position}:** ${formatTrack(track)}`),
+				);
+			} else if (isPlayingNow) {
+				await ctx.reply(`▶️ **Now playing:** ${formatTrack(track)}`);
+			} else {
+				await ctx.reply(
+					`➕ **Added to queue (#${position}):** ${formatTrack(track)}`,
+				);
+			}
 		} catch (error) {
 			console.error(error);
 			await ctx.reply("An error occurred while playing the song!");

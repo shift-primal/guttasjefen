@@ -3,6 +3,7 @@ import type { Command } from "#/types";
 
 export const shuffle: Command = {
 	name: "shuffle",
+	aliases: ["shuff"],
 	description: "Shuffle the queue",
 	async run(ctx) {
 		const queue = await requireQueue(ctx);

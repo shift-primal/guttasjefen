@@ -3,14 +3,19 @@ import type { Command } from "#/types";
 
 export const pause: Command = {
 	name: "pause",
-	aliases: ["resume"],
-	description: "Pause or resume the current track",
+	description: "Pause the current track",
 	async run(ctx) {
 		const queue = await requireQueue(ctx);
 		if (!queue) return;
 
-		const paused = !queue.node.isPaused();
-		queue.node.setPaused(paused);
-		await ctx.reply(paused ? "Paused." : "Resumed.");
+		if (queue.node.isPaused()) {
+			await ctx.reply("Already paused. Use resume to continue.", {
+				ephemeral: true,
+			});
+			return;
+		}
+
+		queue.node.setPaused(true);
+		await ctx.reply("⏸️ Paused.");
 	},
 };

@@ -3,7 +3,7 @@ import type { Command } from "#/types";
 
 export const stop: Command = {
 	name: "stop",
-	aliases: ["leave", "dc"],
+	aliases: ["s", "dc"],
 	description: "Stop playing, clear the queue and leave the voice channel",
 	async run(ctx) {
 		const queue = await requireQueue(ctx);
