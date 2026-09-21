@@ -9,6 +9,7 @@ export const QUEUE_OPTIONS = {
 	disableCompressor: true,
 	disableReverb: true,
 	disableSeeker: true,
+	disableFallbackStream: true,
 	leaveOnEmpty: true,
 	leaveOnEmptyCooldown: LEAVE_ON_EMPTY_MS,
 	leaveOnEnd: true,

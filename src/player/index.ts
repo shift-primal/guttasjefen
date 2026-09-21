@@ -4,13 +4,14 @@ import { Player } from "discord-player";
 import { YoutubeExtractor } from "discord-player-youtubei";
 import { env } from "#/env";
 import { CustomSpotifyExtractor } from "#/extractors/spotify-extractor";
+import { youtubeOptions } from "#/extractors/youtube-extractor";
 import { registerAnnouncements } from "#/player/announcements";
 
 export async function setupPlayer(client: Client) {
 	const player = new Player(client);
 
 	await player.extractors.register(CustomSpotifyExtractor, {});
-	await player.extractors.register(YoutubeExtractor, {});
+	await player.extractors.register(YoutubeExtractor, youtubeOptions());
 	await player.extractors.loadMulti(
 		DefaultExtractors.filter((extractor) => extractor !== SpotifyExtractor),
 	);

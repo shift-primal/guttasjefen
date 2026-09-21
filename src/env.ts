@@ -8,6 +8,7 @@ const runtimeSchema = z.object({
 	DP_SPOTIFY_CLIENT_ID: z.string().optional(),
 	DP_SPOTIFY_CLIENT_SECRET: z.string().optional(),
 	DEBUG_PLAYER: z.string().optional(),
+	YOUTUBE_COOKIES_PATH: z.string().optional(),
 });
 
 const deploySchema = z.object({

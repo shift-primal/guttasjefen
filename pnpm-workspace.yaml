@@ -1,3 +1,4 @@
 allowBuilds:
   '@discordjs/opus': true
   esbuild: true
+  youtube-dl-exec: true

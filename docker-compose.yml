@@ -4,3 +4,7 @@ services:
     container_name: guttasjefen
     restart: unless-stopped
     env_file: .env
+    environment:
+      YOUTUBE_COOKIES_PATH: /app/cookies.txt
+    volumes:
+      - ./cookies.txt:/app/cookies.txt
