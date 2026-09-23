@@ -1,5 +1,10 @@
+import { describeChannels } from "#/bot/channels";
 import { commands } from "#/commands";
-import { ALLOWED_CHANNEL_KEYWORDS, CMD_PREFIX } from "#/constants";
+import {
+	AI_CHANNEL_KEYWORDS,
+	CMD_PREFIX,
+	MUSIC_CHANNEL_KEYWORDS,
+} from "#/constants";
 import type { Command } from "#/types";
 import { formatArgument } from "#/ui/format";
 
@@ -20,7 +25,11 @@ export const help: Command = {
 		lines.push("\nEvery command also works as a slash command, e.g. `/play`.");
 
 		lines.push(
-			`Prefix commands only work in channels with ${ALLOWED_CHANNEL_KEYWORDS.map((k) => `"${k}"`).join(", ")} in the name.`,
+			`Prefix commands only work in ${describeChannels(MUSIC_CHANNEL_KEYWORDS)}.`,
+		);
+
+		lines.push(
+			`**Chat with me:** tag me or reply to one of my messages in any channel. In ${describeChannels(AI_CHANNEL_KEYWORDS)} I reply to every message, no tag needed.`,
 		);
 
 		await ctx.reply(lines.join("\n \n"));
