@@ -8,3 +8,5 @@ services:
       YOUTUBE_COOKIES_PATH: /app/cookies.txt
     volumes:
       - ./cookies.txt:/app/cookies.txt:ro
+      # Mounted as a folder so edits show up even when an editor replaces the file
+      - ./config:/app/config:ro

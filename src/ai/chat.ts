@@ -1,9 +1,11 @@
+import { readFile } from "node:fs/promises";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Message } from "discord.js";
-import { PERSONA } from "#/ai/persona";
 import { env } from "#/env";
 
 const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+// Re-read on every message so edits apply without a restart
+const PERSONA_PATH = "config/persona.md";
 const HISTORY_LIMIT = 20;
 const DISCORD_MAX = 2000;
 
@@ -32,7 +34,7 @@ export async function replyWithAI(message: Message<true>) {
 		model: "claude-sonnet-5",
 		max_tokens: 16000,
 		output_config: { effort: "low" },
-		system: PERSONA,
+		system: await readFile(PERSONA_PATH, "utf8"),
 		messages: [...history, toParam(message, botId)],
 	});
 

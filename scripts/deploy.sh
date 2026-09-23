@@ -22,7 +22,10 @@ rsync -az --delete \
 	--exclude '.env' \
 	--exclude '.env.*' \
 	--exclude cookies.txt \
+	--exclude config/persona.md \
 	./ "$HOST:$DIR/"
+# The persona is edited on the server, so only upload it the first time
+rsync -az --ignore-existing config/persona.md "$HOST:$DIR/config/"
 
 echo "==> Building and restarting on $HOST"
 ssh "$HOST" DIR="$DIR" DEPLOY_COMMANDS="$DEPLOY_COMMANDS" bash -s <<'REMOTE'
@@ -54,9 +57,16 @@ if [[ "$DEPLOY_COMMANDS" == true ]]; then
 fi
 
 docker image prune -f >/dev/null
-sleep 3
+
+# A crash on startup shows up as a restart or a stopped container within a few seconds
+sleep 8
 docker compose ps
 docker compose logs --tail 20 bot
+status=$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' guttasjefen)
+if [[ "$status" != "running 0" ]]; then
+	echo "error: bot is not running cleanly (status/restarts: $status)" >&2
+	exit 1
+fi
 REMOTE
 
 echo "==> Deployed"
