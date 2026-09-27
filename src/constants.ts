@@ -1,7 +1,9 @@
 export const CMD_PREFIX = "-";
 
-export const MUSIC_CHANNEL_KEYWORDS = ["bot", "music"];
-export const AI_CHANNEL_KEYWORDS = ["bot", "chat"];
+export const MUSIC_CHANNEL_KEYWORDS = ["bot"];
+export const AI_CHANNEL_KEYWORDS = ["bot"];
+export const RANDOM_REPLY_CHANNEL_KEYWORDS = ["general"];
+export const RANDOM_REPLY_CHANCE = 0.075;
 
 export const CHAT_RESET_MARKER = "Chat history cleared.";
 

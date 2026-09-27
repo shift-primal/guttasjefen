@@ -5,10 +5,19 @@ import {
 	type Message,
 } from "discord.js";
 import { replyWithAI } from "#/ai/chat";
-import { describeChannels, isAIChannel, isMusicChannel } from "#/bot/channels";
+import {
+	describeChannels,
+	isAIChannel,
+	isMusicChannel,
+	isRandomReplyChannel,
+} from "#/bot/channels";
 import { fromInteraction, fromMessage } from "#/bot/context";
 import { findCommand } from "#/commands";
-import { CMD_PREFIX, MUSIC_CHANNEL_KEYWORDS } from "#/constants";
+import {
+	CMD_PREFIX,
+	MUSIC_CHANNEL_KEYWORDS,
+	RANDOM_REPLY_CHANCE,
+} from "#/constants";
 import { channelName, elapsed } from "#/log";
 import type { Command, CommandContext } from "#/types";
 import { CONTROL_ID_PREFIX, handleControl } from "#/ui/controls";
@@ -63,7 +72,10 @@ async function onMessage(message: Message) {
 			ignoreEveryone: true,
 			ignoreRoles: true,
 		});
-		if (mentioned || isAIChannel(message.channel.name)) {
+		const { name } = message.channel;
+		const randomReply =
+			isRandomReplyChannel(name) && Math.random() < RANDOM_REPLY_CHANCE;
+		if (mentioned || isAIChannel(name) || randomReply) {
 			await replyWithAI(message).catch(console.error);
 		}
 		return;

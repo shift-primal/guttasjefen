@@ -4,6 +4,7 @@ import {
 	AI_CHANNEL_KEYWORDS,
 	CMD_PREFIX,
 	MUSIC_CHANNEL_KEYWORDS,
+	RANDOM_REPLY_CHANNEL_KEYWORDS,
 } from "#/constants";
 import type { Command } from "#/types";
 import { formatArgument } from "#/ui/format";
@@ -32,7 +33,7 @@ export const help: Command = {
 		);
 
 		lines.push(
-			`**Chat with me:** tag me or reply to one of my messages in any channel. In ${describeChannels(AI_CHANNEL_KEYWORDS)} I reply to every message, no tag needed.`,
+			`**Chat with me:** tag me or reply to one of my messages in any channel. In ${describeChannels(AI_CHANNEL_KEYWORDS)} I reply to every message, no tag needed, and in ${describeChannels(RANDOM_REPLY_CHANNEL_KEYWORDS)} I butt in every now and then.`,
 		);
 
 		await ctx.reply(lines.join("\n \n"));

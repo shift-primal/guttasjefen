@@ -19,6 +19,19 @@ export async function loadProfiles(): Promise<Profiles> {
 	}
 }
 
+async function saveProfiles(profiles: Profiles) {
+	await mkdir(dirname(PROFILES_PATH), { recursive: true });
+	await writeFile(PROFILES_PATH, JSON.stringify(profiles, null, "\t"));
+}
+
+export async function clearProfile(userId: string) {
+	const profiles = await loadProfiles();
+	if (!(userId in profiles)) return false;
+	delete profiles[userId];
+	await saveProfiles(profiles);
+	return true;
+}
+
 export function describeProfiles(profiles: Profiles, userIds: Set<string>) {
 	const lines = [...userIds]
 		.map((id) => profiles[id])
@@ -58,15 +71,15 @@ export async function maybeUpdateProfiles(
 
 		const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
 		const updates: Record<string, unknown> = JSON.parse(json);
+		const latest = await loadProfiles();
 		for (const [id, name] of people) {
 			const notes = updates[id];
 			if (typeof notes === "string" && notes.trim()) {
-				profiles[id] = { name, notes: notes.trim() };
+				latest[id] = { name, notes: notes.trim() };
 			}
 		}
 
-		await mkdir(dirname(PROFILES_PATH), { recursive: true });
-		await writeFile(PROFILES_PATH, JSON.stringify(profiles, null, "\t"));
+		await saveProfiles(latest);
 	} catch (error) {
 		console.error("Profile update failed:", error);
 	} finally {

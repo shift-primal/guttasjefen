@@ -65,7 +65,7 @@ export async function replyWithAI(message: Message<true>) {
 	});
 	const all = [...recent.values()];
 	const reset = all.findIndex(
-		(m) => m.author.id === botId && m.content === CHAT_RESET_MARKER,
+		(m) => m.author.id === botId && m.content.startsWith(CHAT_RESET_MARKER),
 	);
 	const log = (reset === -1 ? all : all.slice(0, reset))
 		.reverse()
