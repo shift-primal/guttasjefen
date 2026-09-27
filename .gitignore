@@ -1,6 +1,8 @@
 .env
 node_modules
 cookies.txt
-persona.md
 data
-/config
+/config/*
+!/config/.gitkeep
+/scripts/scenarios/*
+!/scripts/scenarios/.gitkeep

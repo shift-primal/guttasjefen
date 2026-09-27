@@ -1,26 +1,22 @@
-import { readFile } from "node:fs/promises";
-import { createXai } from "@ai-sdk/xai";
 import { type FilePart, generateText, type TextPart } from "ai";
 import type { Message } from "discord.js";
 import { imageUrls } from "#/ai/images";
+import { model, REPLY_OPTIONS } from "#/ai/model";
 import {
 	describeProfiles,
 	loadProfiles,
 	maybeUpdateProfiles,
 } from "#/ai/profiles";
+import {
+	buildSystem,
+	buildUserPrompt,
+	cleanReply,
+	OWN_REPLY_PLACEHOLDER,
+} from "#/ai/prompt";
 import { CHAT_RESET_MARKER } from "#/constants";
-import { env } from "#/env";
 import { elapsed, preview } from "#/log";
 
-const xai = createXai({ apiKey: env.XAI_API_KEY });
-const model = xai("grok-4.20-non-reasoning");
-
-const PERSONA_PATH = "config/persona.md";
-const CHAT_RULES_PATH = "config/chat-rules.md";
 const HISTORY_LIMIT = 15;
-// The bot's own replies are hidden from the log: the model copies the
-// structure of whatever it said last, so every reply turns into a template.
-const OWN_REPLY_PLACEHOLDER = "[ditt svar, skjult]";
 const FALLBACK_REPLY = "og?";
 const MAX_IMAGES = 4;
 
@@ -89,30 +85,24 @@ export async function replyWithAI(message: Message<true>) {
 
 	const name = authorName(message, botId);
 
-	const [persona, rules] = await Promise.all([
-		readFile(PERSONA_PATH, "utf8"),
-		readFile(CHAT_RULES_PATH, "utf8"),
-	]);
 	const profiles = describeProfiles(
 		await loadProfiles(),
 		new Set(people.keys()),
 	);
-
-	const prompt = [
-		`Chatlogg:\n${transcript}`,
-		`Du svarer nå ${name}. Meldingen deres: ${describeContent(message, botId)}`,
-		"Skriv kun svaret ditt, én linje, uten navn eller tidsstempel foran.",
-	]
-		.filter(Boolean)
-		.join("\n\n");
+	const system = await buildSystem(profiles);
+	const prompt = buildUserPrompt(
+		transcript,
+		name,
+		describeContent(message, botId),
+		system.move,
+	);
 	const images = await imageParts(message, name);
 
 	const generate = (content: (TextPart | FilePart)[]) =>
 		generateText({
 			model,
-			maxOutputTokens: 200,
-			temperature: 1,
-			system: `${persona.trim()}\n\n${rules.trim()}${profiles}`,
+			...REPLY_OPTIONS,
+			system: system.text,
 			messages: [{ role: "user", content }],
 		});
 
@@ -132,20 +122,14 @@ export async function replyWithAI(message: Message<true>) {
 		return;
 	}
 
-	const reply =
-		text
-			.trim()
-			.split("\n")[0]
-			?.replace(/^\[\d{2}:\d{2}\]\s*/, "")
-			.replace(/^Guttasjefen( \(deg\))?:\s*/i, "")
-			.trim() || FALLBACK_REPLY;
+	const reply = cleanReply(text) || FALLBACK_REPLY;
 
 	await message.reply({
 		content: reply.slice(0, 2000),
 		allowedMentions: { parse: [] },
 	});
 	console.log(
-		`[ai] replied in ${elapsed(start)} (xai ${generateTime}${imageCount ? `, ${imageCount} images` : ""}): ${preview(reply)}`,
+		`[ai] replied in ${elapsed(start)} (xai ${generateTime}${imageCount ? `, ${imageCount} images` : ""}${system.moveName ? `, ${system.moveName}` : ""}): ${preview(reply)}`,
 	);
 
 	const peopleTranscript = [...log, message]
