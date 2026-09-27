@@ -1,3 +1,6 @@
 .env
 node_modules
 cookies.txt
+persona.md
+data
+/config/persona.md

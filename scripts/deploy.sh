@@ -23,6 +23,7 @@ rsync -az --delete \
 	--exclude '.env.*' \
 	--exclude cookies.txt \
 	--exclude config/persona.md \
+	--exclude data \
 	./ "$HOST:$DIR/"
 # The persona is edited on the server, so only upload it the first time
 rsync -az --ignore-existing config/persona.md "$HOST:$DIR/config/"

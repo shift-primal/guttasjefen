@@ -10,3 +10,5 @@ services:
       - ./cookies.txt:/app/cookies.txt:ro
       # Mounted as a folder so edits show up even when an editor replaces the file
       - ./config:/app/config:ro
+      # Profiles the bot keeps on each user, written at runtime
+      - ./data:/app/data

@@ -1,19 +1,54 @@
 import { readFile } from "node:fs/promises";
-import Anthropic from "@anthropic-ai/sdk";
+import { createXai } from "@ai-sdk/xai";
+import { generateText } from "ai";
 import type { Message } from "discord.js";
+import {
+	describeProfiles,
+	loadProfiles,
+	maybeUpdateProfiles,
+} from "#/ai/profiles";
 import { env } from "#/env";
 
-const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+const xai = createXai({ apiKey: env.XAI_API_KEY });
+const model = xai("grok-4.20-non-reasoning");
 // Re-read on every message so edits apply without a restart
 const PERSONA_PATH = "config/persona.md";
-const HISTORY_LIMIT = 20;
-const DISCORD_MAX = 2000;
+const HISTORY_LIMIT = 30;
+// Only the bot's latest replies go in the log, otherwise it copies its own insults
+const OWN_REPLIES_IN_LOG = 3;
+const RECENT_REPLIES_TO_AVOID = 6;
+const FALLBACK_REPLY = "og?";
 
-function toParam(msg: Message, botId: string): Anthropic.MessageParam {
-	const text = msg.content.replaceAll(`<@${botId}>`, "").trim();
-	if (msg.author.id === botId) return { role: "assistant", content: text };
-	const name = msg.member?.displayName ?? msg.author.username;
-	return { role: "user", content: `${name}: ${text}` };
+// Added after the persona, so it applies whatever the persona file says
+const CHAT_RULES = `
+
+## Å kjenne folk
+- Chatloggen viser hvem som skrev hver melding. Hold styr på hvem som sa hva, og bland aldri sammen folk.
+- Alle er forskjellige. Bruk det du vet om hver person (notatene under og det de har sagt tidligere) så roasten treffer akkurat DEM. Aldri bruk samme fornærmelse på to folk.
+- Svar på det personen FAKTISK skrev. Roasten skal handle om innholdet i meldingen deres.
+- Når folk snakker med hverandre kan du ta side, sette dem opp mot hverandre, eller roaste begge på hver sin måte.
+- Dra fram ting folk sa tidligere i samtalen.`;
+
+function authorName(msg: Message, botId: string) {
+	if (msg.author.id === botId) return "Guttasjefen (deg)";
+	return msg.member?.displayName ?? msg.author.displayName;
+}
+
+function cleanContent(msg: Message, botId: string) {
+	return msg.content.replaceAll(`<@${botId}>`, "").replaceAll("\n", " ").trim();
+}
+
+function formatLine(msg: Message, botId: string) {
+	const time = msg.createdAt.toLocaleTimeString("nb-NO", {
+		hour: "2-digit",
+		minute: "2-digit",
+		timeZone: "Europe/Oslo",
+	});
+	const target = msg.mentions.repliedUser;
+	const replyTo = target
+		? ` (svarer ${target.id === botId ? "deg" : target.displayName})`
+		: "";
+	return `[${time}] ${authorName(msg, botId)}${replyTo}: ${cleanContent(msg, botId)}`;
 }
 
 export async function replyWithAI(message: Message<true>) {
@@ -24,33 +59,67 @@ export async function replyWithAI(message: Message<true>) {
 		limit: HISTORY_LIMIT,
 		before: message.id,
 	});
-	const history = [...recent.values()]
-		.reverse()
-		.filter((m) => m.content)
-		.map((m) => toParam(m, botId));
-	while (history[0]?.role === "assistant") history.shift();
+	const log = [...recent.values()].reverse().filter((m) => m.content);
 
-	const response = await anthropic.messages.create({
-		model: "claude-sonnet-5",
-		max_tokens: 16000,
-		output_config: { effort: "low" },
-		system: await readFile(PERSONA_PATH, "utf8"),
-		messages: [...history, toParam(message, botId)],
+	const ownReplies = log.filter((m) => m.author.id === botId);
+	const keptOwn = new Set(ownReplies.slice(-OWN_REPLIES_IN_LOG));
+	const lines = log.filter((m) => m.author.id !== botId || keptOwn.has(m));
+	const transcript = [...lines, message]
+		.map((m) => formatLine(m, botId))
+		.join("\n");
+
+	const people = new Map<string, string>();
+	for (const m of [...log, message]) {
+		if (m.author.id !== botId && !m.author.bot)
+			people.set(m.author.id, authorName(m, botId));
+	}
+
+	const avoid = ownReplies
+		.slice(-RECENT_REPLIES_TO_AVOID)
+		.map((m) => `- ${cleanContent(m, botId)}`)
+		.join("\n");
+	const name = authorName(message, botId);
+
+	const persona = await readFile(PERSONA_PATH, "utf8");
+	const profiles = describeProfiles(
+		await loadProfiles(),
+		new Set(people.keys()),
+	);
+
+	const { text, finishReason } = await generateText({
+		model,
+		maxOutputTokens: 200,
+		temperature: 1,
+		system: persona + CHAT_RULES + profiles,
+		prompt: [
+			`Chatlogg:\n${transcript}`,
+			`Du svarer nå ${name}. Meldingen deres: ${cleanContent(message, botId)}`,
+			avoid &&
+				`Dine siste svar. IKKE gjenbruk ord, fornærmelser, åpninger eller struktur fra disse:\n${avoid}`,
+			"Skriv kun svaret ditt, én linje, uten navn eller tidsstempel foran.",
+		]
+			.filter(Boolean)
+			.join("\n\n"),
 	});
 
-	if (response.stop_reason === "refusal") {
+	if (finishReason === "content-filter") {
 		await message.reply("Nah, can't help with that one.");
 		return;
 	}
 
-	const text = response.content
-		.flatMap((b) => (b.type === "text" ? [b.text] : []))
-		.join("");
+	// Keep only the first line, and strip a "Guttasjefen:" prefix if the model copies the log format
+	const reply =
+		text
+			.trim()
+			.split("\n")[0]
+			?.replace(/^\[\d{2}:\d{2}\]\s*/, "")
+			.replace(/^Guttasjefen( \(deg\))?:\s*/i, "")
+			.trim() || FALLBACK_REPLY;
 
-	for (let i = 0; i < text.length; i += DISCORD_MAX) {
-		await message.reply({
-			content: text.slice(i, i + DISCORD_MAX),
-			allowedMentions: { parse: [] },
-		});
-	}
+	await message.reply({
+		content: reply.slice(0, 2000),
+		allowedMentions: { parse: [] },
+	});
+
+	void maybeUpdateProfiles(model, message.channelId, transcript, people);
 }
