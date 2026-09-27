@@ -9,6 +9,7 @@ import { describeChannels, isAIChannel, isMusicChannel } from "#/bot/channels";
 import { fromInteraction, fromMessage } from "#/bot/context";
 import { findCommand } from "#/commands";
 import { CMD_PREFIX, MUSIC_CHANNEL_KEYWORDS } from "#/constants";
+import { channelName, elapsed } from "#/log";
 import type { Command, CommandContext } from "#/types";
 import { CONTROL_ID_PREFIX, handleControl } from "#/ui/controls";
 import { formatArgument } from "#/ui/format";
@@ -19,11 +20,21 @@ const buttonHandlers: [string, (i: ButtonInteraction) => Promise<void>][] = [
 	[QUEUE_ID_PREFIX, handleQueuePage],
 ];
 
-async function runCommand(command: Command, ctx: CommandContext) {
+async function runCommand(
+	command: Command,
+	ctx: CommandContext,
+	prefix: string,
+) {
+	const label = `[command ${prefix}${command.name}]`;
+	const start = performance.now();
+	console.log(
+		`${label} ${ctx.member.displayName} in ${channelName(ctx.channel)}${ctx.args ? `: ${ctx.args}` : ""}`,
+	);
 	try {
 		await command.run(ctx);
+		console.log(`${label} done in ${elapsed(start)}`);
 	} catch (error) {
-		console.error(`[command ${command.name}]`, error);
+		console.error(`${label} failed after ${elapsed(start)}`, error);
 		await ctx
 			.reply("Something went wrong.", { ephemeral: true })
 			.catch(console.error);
@@ -75,7 +86,7 @@ async function onMessage(message: Message) {
 		return;
 	}
 
-	await runCommand(command, ctx);
+	await runCommand(command, ctx, CMD_PREFIX);
 }
 
 export function registerHandlers(client: Client) {
@@ -84,6 +95,9 @@ export function registerHandlers(client: Client) {
 			const handler = buttonHandlers.find(([prefix]) =>
 				interaction.customId.startsWith(prefix),
 			)?.[1];
+			console.log(
+				`[button ${interaction.customId}] ${interaction.user.displayName}`,
+			);
 			await handler?.(interaction).catch(console.error);
 			return;
 		}
@@ -94,7 +108,7 @@ export function registerHandlers(client: Client) {
 		const ctx = command && fromInteraction(interaction, command);
 		if (!command || !ctx) return;
 
-		await runCommand(command, ctx);
+		await runCommand(command, ctx, "/");
 	});
 
 	client.on(Events.MessageCreate, (message) => {

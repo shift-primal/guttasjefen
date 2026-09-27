@@ -10,15 +10,15 @@ import {
 } from "#/ai/profiles";
 import { CHAT_RESET_MARKER } from "#/constants";
 import { env } from "#/env";
+import { elapsed, preview } from "#/log";
 
 const xai = createXai({ apiKey: env.XAI_API_KEY });
 const model = xai("grok-4.20-non-reasoning");
 
 const PERSONA_PATH = "config/persona.md";
 const CHAT_RULES_PATH = "config/chat-rules.md";
-const HISTORY_LIMIT = 30;
-const OWN_REPLIES_IN_LOG = 3;
-const RECENT_REPLIES_TO_AVOID = 6;
+const HISTORY_LIMIT = 15;
+const OWN_REPLIES_IN_LOG = 1;
 const FALLBACK_REPLY = "og?";
 const MAX_IMAGES = 4;
 
@@ -53,6 +53,10 @@ function formatLine(msg: Message, botId: string) {
 
 export async function replyWithAI(message: Message<true>) {
 	const botId = message.client.user.id;
+	const start = performance.now();
+	console.log(
+		`[ai] ${authorName(message, botId)} in #${message.channel.name}: ${preview(describeContent(message, botId))}`,
+	);
 	await message.channel.sendTyping();
 
 	const recent = await message.channel.messages.fetch({
@@ -80,10 +84,6 @@ export async function replyWithAI(message: Message<true>) {
 			people.set(m.author.id, authorName(m, botId));
 	}
 
-	const avoid = ownReplies
-		.slice(-RECENT_REPLIES_TO_AVOID)
-		.map((m) => `- ${cleanContent(m, botId)}`)
-		.join("\n");
 	const name = authorName(message, botId);
 
 	const [persona, rules] = await Promise.all([
@@ -98,8 +98,6 @@ export async function replyWithAI(message: Message<true>) {
 	const prompt = [
 		`Chatlogg:\n${transcript}`,
 		`Du svarer nå ${name}. Meldingen deres: ${describeContent(message, botId)}`,
-		avoid &&
-			`Dine siste svar. IKKE gjenbruk ord, fornærmelser, åpninger eller struktur fra disse:\n${avoid}`,
 		"Skriv kun svaret ditt, én linje, uten navn eller tidsstempel foran.",
 	]
 		.filter(Boolean)
@@ -116,12 +114,15 @@ export async function replyWithAI(message: Message<true>) {
 		});
 
 	const textPart: TextPart = { type: "text", text: prompt };
+	const generateStart = performance.now();
 	const { text, finishReason } = images.length
 		? await generate([textPart, ...images]).catch((error) => {
 				console.error("Reply with images failed, retrying without:", error);
 				return generate([textPart]);
 			})
 		: await generate([textPart]);
+	const generateTime = elapsed(generateStart);
+	const imageCount = images.filter((p) => p.type === "file").length;
 
 	if (finishReason === "content-filter") {
 		await message.reply("Nah, can't help with that one.");
@@ -140,8 +141,15 @@ export async function replyWithAI(message: Message<true>) {
 		content: reply.slice(0, 2000),
 		allowedMentions: { parse: [] },
 	});
+	console.log(
+		`[ai] replied in ${elapsed(start)} (xai ${generateTime}${imageCount ? `, ${imageCount} images` : ""}): ${preview(reply)}`,
+	);
 
-	void maybeUpdateProfiles(model, message.channelId, transcript, people);
+	const peopleTranscript = [...log, message]
+		.filter((m) => m.author.id !== botId)
+		.map((m) => formatLine(m, botId))
+		.join("\n");
+	void maybeUpdateProfiles(model, message.channelId, peopleTranscript, people);
 }
 
 async function imageParts(message: Message<true>, name: string) {

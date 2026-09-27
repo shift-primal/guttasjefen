@@ -22,11 +22,24 @@ rsync -az --delete \
 	--exclude '.env' \
 	--exclude '.env.*' \
 	--exclude cookies.txt \
-	--exclude config/persona.md \
+	--exclude /config \
 	--exclude data \
 	./ "$HOST:$DIR/"
-# The persona is edited on the server, so only upload it the first time
-rsync -az --ignore-existing config/persona.md "$HOST:$DIR/config/"
+
+echo "==> Syncing config"
+config_files=()
+while IFS= read -r -d '' file; do
+	if grep -q '[^[:space:]]' "$file"; then
+		config_files+=("${file#config/}")
+	else
+		echo "skipping empty $file, keeping the server's copy"
+	fi
+done < <(find config -type f -print0 2>/dev/null)
+
+if ((${#config_files[@]})); then
+	printf '%s\n' "${config_files[@]}" |
+		rsync -az --itemize-changes --files-from=- config/ "$HOST:$DIR/config/"
+fi
 
 echo "==> Building and restarting on $HOST"
 ssh "$HOST" DIR="$DIR" DEPLOY_COMMANDS="$DEPLOY_COMMANDS" bash -s <<'REMOTE'
