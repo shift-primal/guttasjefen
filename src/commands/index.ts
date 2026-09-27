@@ -29,8 +29,8 @@ export const commands: Command[] = [
 	shuffle,
 	loop,
 	reset,
-  help,
-  ping,
+	help,
+	ping,
 ];
 
 const byName = new Map<string, Command>(

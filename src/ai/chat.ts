@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { createXai } from "@ai-sdk/xai";
-import { generateText } from "ai";
+import { type FilePart, generateText, type TextPart } from "ai";
 import type { Message } from "discord.js";
+import { imageUrls } from "#/ai/images";
 import {
 	describeProfiles,
 	loadProfiles,
@@ -19,6 +20,7 @@ const HISTORY_LIMIT = 30;
 const OWN_REPLIES_IN_LOG = 3;
 const RECENT_REPLIES_TO_AVOID = 6;
 const FALLBACK_REPLY = "og?";
+const MAX_IMAGES = 4;
 
 function authorName(msg: Message, botId: string) {
 	if (msg.author.id === botId) return "Guttasjefen (deg)";
@@ -27,6 +29,13 @@ function authorName(msg: Message, botId: string) {
 
 function cleanContent(msg: Message, botId: string) {
 	return msg.content.replaceAll(`<@${botId}>`, "").replaceAll("\n", " ").trim();
+}
+
+function describeContent(msg: Message, botId: string) {
+	const count = imageUrls(msg).length;
+	const marker =
+		count === 0 ? "" : count === 1 ? "[bilde]" : `[${count} bilder]`;
+	return [cleanContent(msg, botId), marker].filter(Boolean).join(" ");
 }
 
 function formatLine(msg: Message, botId: string) {
@@ -39,7 +48,7 @@ function formatLine(msg: Message, botId: string) {
 	const replyTo = target
 		? ` (svarer ${target.id === botId ? "deg" : target.displayName})`
 		: "";
-	return `[${time}] ${authorName(msg, botId)}${replyTo}: ${cleanContent(msg, botId)}`;
+	return `[${time}] ${authorName(msg, botId)}${replyTo}: ${describeContent(msg, botId)}`;
 }
 
 export async function replyWithAI(message: Message<true>) {
@@ -56,7 +65,7 @@ export async function replyWithAI(message: Message<true>) {
 	);
 	const log = (reset === -1 ? all : all.slice(0, reset))
 		.reverse()
-		.filter((m) => m.content);
+		.filter((m) => m.content || imageUrls(m).length > 0);
 
 	const ownReplies = log.filter((m) => m.author.id === botId);
 	const keptOwn = new Set(ownReplies.slice(-OWN_REPLIES_IN_LOG));
@@ -86,21 +95,33 @@ export async function replyWithAI(message: Message<true>) {
 		new Set(people.keys()),
 	);
 
-	const { text, finishReason } = await generateText({
-		model,
-		maxOutputTokens: 200,
-		temperature: 1,
-		system: `${persona.trim()}\n\n${rules.trim()}${profiles}`,
-		prompt: [
-			`Chatlogg:\n${transcript}`,
-			`Du svarer nå ${name}. Meldingen deres: ${cleanContent(message, botId)}`,
-			avoid &&
-				`Dine siste svar. IKKE gjenbruk ord, fornærmelser, åpninger eller struktur fra disse:\n${avoid}`,
-			"Skriv kun svaret ditt, én linje, uten navn eller tidsstempel foran.",
-		]
-			.filter(Boolean)
-			.join("\n\n"),
-	});
+	const prompt = [
+		`Chatlogg:\n${transcript}`,
+		`Du svarer nå ${name}. Meldingen deres: ${describeContent(message, botId)}`,
+		avoid &&
+			`Dine siste svar. IKKE gjenbruk ord, fornærmelser, åpninger eller struktur fra disse:\n${avoid}`,
+		"Skriv kun svaret ditt, én linje, uten navn eller tidsstempel foran.",
+	]
+		.filter(Boolean)
+		.join("\n\n");
+	const images = await imageParts(message, name);
+
+	const generate = (content: (TextPart | FilePart)[]) =>
+		generateText({
+			model,
+			maxOutputTokens: 200,
+			temperature: 1,
+			system: `${persona.trim()}\n\n${rules.trim()}${profiles}`,
+			messages: [{ role: "user", content }],
+		});
+
+	const textPart: TextPart = { type: "text", text: prompt };
+	const { text, finishReason } = images.length
+		? await generate([textPart, ...images]).catch((error) => {
+				console.error("Reply with images failed, retrying without:", error);
+				return generate([textPart]);
+			})
+		: await generate([textPart]);
 
 	if (finishReason === "content-filter") {
 		await message.reply("Nah, can't help with that one.");
@@ -121,4 +142,36 @@ export async function replyWithAI(message: Message<true>) {
 	});
 
 	void maybeUpdateProfiles(model, message.channelId, transcript, people);
+}
+
+async function imageParts(message: Message<true>, name: string) {
+	const groups: [string, URL[]][] = [
+		[`Bilder fra meldingen til ${name}:`, imageUrls(message)],
+	];
+
+	if (message.reference?.messageId) {
+		const replied = await message.fetchReference().catch(() => null);
+		if (replied) {
+			const author = authorName(replied, message.client.user.id);
+			groups.push([
+				`Bilder fra meldingen ${name} svarer på (sendt av ${author}):`,
+				imageUrls(replied),
+			]);
+		}
+	}
+
+	const parts: (TextPart | FilePart)[] = [];
+	let remaining = MAX_IMAGES;
+	for (const [label, urls] of groups) {
+		const taken = urls.slice(0, remaining);
+		if (taken.length === 0) continue;
+		remaining -= taken.length;
+		parts.push(
+			{ type: "text", text: label },
+			...taken.map(
+				(data): FilePart => ({ type: "file", data, mediaType: "image" }),
+			),
+		);
+	}
+	return parts;
 }

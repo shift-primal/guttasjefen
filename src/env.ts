@@ -15,7 +15,6 @@ const runtimeSchema = z.object({
 const deploySchema = z.object({
 	DISCORD_TOKEN: z.string().min(1),
 	CLIENT_ID: z.string().min(1),
-	GUILD_ID: z.string().min(1),
 });
 
 export const env = runtimeSchema.parse(process.env);

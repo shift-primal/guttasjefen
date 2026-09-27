@@ -1,13 +1,22 @@
-import { REST, Routes } from "discord.js";
+import { type APIGuild, REST, Routes } from "discord.js";
 import { toSlashJSON } from "#/bot/slash";
 import { commands } from "#/commands";
 import { deployEnv } from "#/env";
 
-const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID } = deployEnv();
+const { DISCORD_TOKEN, CLIENT_ID } = deployEnv();
 
 const body = commands.map(toSlashJSON);
 
 const rest = new REST().setToken(DISCORD_TOKEN);
-await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body });
+await rest.put(Routes.applicationCommands(CLIENT_ID), { body });
 
-console.log(`Registered ${body.length} command(s)`);
+const guilds = (await rest.get(Routes.userGuilds())) as APIGuild[];
+for (const guild of guilds) {
+	await rest.put(Routes.applicationGuildCommands(CLIENT_ID, guild.id), {
+		body: [],
+	});
+}
+
+console.log(
+	`Registered ${body.length} global command(s), cleared guild commands in ${guilds.length} server(s)`,
+);

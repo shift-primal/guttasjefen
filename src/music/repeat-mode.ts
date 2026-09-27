@@ -2,7 +2,6 @@ import { QueueRepeatMode } from "discord-player";
 
 interface RepeatModeInfo {
 	mode: QueueRepeatMode;
-	// The first name is the short label shown on the loop button
 	names: [string, ...string[]];
 	label: string;
 }
