@@ -8,7 +8,7 @@ import { type GuildQueue, useQueue } from "discord-player";
 import { formatNowPlaying, formatTrack } from "#/ui/format";
 
 const PAGE_SIZE = 10;
-const ID_PREFIX = "queue:";
+export const QUEUE_ID_PREFIX = "queue:";
 
 export function renderQueue(queue: GuildQueue, requestedPage = 1) {
 	const upcoming = queue.tracks.toArray();
@@ -40,7 +40,6 @@ export function renderQueue(queue: GuildQueue, requestedPage = 1) {
 }
 
 function pageButtons(page: number, pages: number) {
-	// The slot keeps ids unique when two buttons point at the same page.
 	const button = (
 		slot: string,
 		target: number,
@@ -48,7 +47,7 @@ function pageButtons(page: number, pages: number) {
 		disabled: boolean,
 	) =>
 		new ButtonBuilder()
-			.setCustomId(`${ID_PREFIX}${target}:${slot}`)
+			.setCustomId(`${QUEUE_ID_PREFIX}${target}:${slot}`)
 			.setLabel(label)
 			.setStyle(ButtonStyle.Secondary)
 			.setDisabled(disabled);
@@ -62,10 +61,8 @@ function pageButtons(page: number, pages: number) {
 }
 
 export async function handleQueuePage(interaction: ButtonInteraction) {
-	if (!interaction.customId.startsWith(ID_PREFIX)) return;
-
 	const page = Number(
-		interaction.customId.slice(ID_PREFIX.length).split(":")[0],
+		interaction.customId.slice(QUEUE_ID_PREFIX.length).split(":")[0],
 	);
 	if (!Number.isInteger(page) || !interaction.inCachedGuild()) return;
 

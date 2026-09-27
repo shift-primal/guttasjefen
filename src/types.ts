@@ -25,6 +25,8 @@ export interface Command {
 	aliases?: string[];
 	description: string;
 	argument?: { name: string; description: string; required?: boolean };
+	slashOnly?: boolean;
+	anyChannel?: boolean;
 	run(ctx: CommandContext): Promise<void>;
 }
 

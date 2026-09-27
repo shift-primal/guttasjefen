@@ -193,6 +193,9 @@ importers:
       discord.js:
         specifier: ^14.27.0
         version: 14.27.0
+      dotenv:
+        specifier: ^18.0.4
+        version: 18.0.4
       googlevideo:
         specifier: ^4.1.1
         version: 4.1.1
@@ -202,6 +205,9 @@ importers:
       simple-ytdl-core:
         specifier: ^1.1.1
         version: 1.1.1
+      tsx:
+        specifier: ^4.23.13
+        version: 4.23.13
       youtube-dl-exec:
         specifier: ^3.1.15
         version: 3.1.15(debug@4.4.3)
@@ -215,12 +221,6 @@ importers:
       '@types/node':
         specifier: ^26.6.2
         version: 26.6.2
-      dotenv:
-        specifier: ^18.0.1
-        version: 18.0.1
-      tsx:
-        specifier: ^4.23.13
-        version: 4.23.13
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -1441,8 +1441,8 @@ packages:
   domutils@3.2.2:
     resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
 
-  dotenv@18.0.1:
-    resolution: {integrity: sha512-0eR4m4D/jH5eaI3evo2ZqqMii5mrTCR12v12VChdie6O1gPHs7XAjzTep0CWc1Bd+oNx3vVfbi734dK4zghigw==}
+  dotenv@18.0.4:
+    resolution: {integrity: sha512-jGt9uI5BIxpVO15kvy+iEFqNAwxYClKWnkptLjSNPnFLC003Imd0ofr3aEVsbpHdSBdSsbcApNIlz4nbyGMwdA==}
     engines: {node: '>=12'}
     hasBin: true
 
@@ -3177,7 +3177,7 @@ snapshots:
       domelementtype: 2.3.0
       domhandler: 5.0.3
 
-  dotenv@18.0.1: {}
+  dotenv@18.0.4: {}
 
   emoji-regex@8.0.0: {}
 

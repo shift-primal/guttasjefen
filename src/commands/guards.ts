@@ -1,30 +1,45 @@
 import { PermissionsBitField, type VoiceBasedChannel } from "discord.js";
-import { type GuildQueue, type Track, useQueue } from "discord-player";
+import type { Track } from "discord-player";
+import { type ActiveQueue, checkQueueAccess } from "#/music/access";
+import { findTrack } from "#/music/find-track";
 import type { CommandContext } from "#/types";
 
 export function refuse(ctx: CommandContext, message: string) {
 	return ctx.reply(message, { ephemeral: true });
 }
 
-export type ActiveQueue = GuildQueue & { currentTrack: Track };
-
 export async function requireQueue(
 	ctx: CommandContext,
-	{ sameChannel = true } = {},
+	options?: { sameChannel?: boolean },
 ): Promise<ActiveQueue | null> {
-	const queue = useQueue(ctx.guild);
+	const queue = checkQueueAccess(ctx.guild, ctx.member, options);
+	if (typeof queue !== "string") return queue;
 
-	if (!queue?.currentTrack) {
-		await refuse(ctx, "Nothing is playing right now.");
+	await refuse(ctx, queue);
+	return null;
+}
+
+export async function requireUpcomingTrack(
+	ctx: CommandContext,
+	queue: ActiveQueue,
+	action: string,
+): Promise<{ track: Track; position: number } | null> {
+	const upcoming = queue.tracks.toArray();
+	if (upcoming.length === 0) {
+		await refuse(ctx, `There is nothing queued to ${action}.`);
 		return null;
 	}
 
-	if (sameChannel && ctx.member.voice.channelId !== queue.channel?.id) {
-		await refuse(ctx, "You need to be in my voice channel to do that!");
+	const track = findTrack(upcoming, ctx.args);
+	if (!track) {
+		await refuse(
+			ctx,
+			`No track in the queue matches "${ctx.args}". Use its number from the queue command, or part of its title.`,
+		);
 		return null;
 	}
 
-	return queue as ActiveQueue;
+	return { track, position: upcoming.indexOf(track) + 1 };
 }
 
 export async function requireVoiceChannel(

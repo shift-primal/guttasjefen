@@ -7,27 +7,18 @@ import {
 	loadProfiles,
 	maybeUpdateProfiles,
 } from "#/ai/profiles";
+import { CHAT_RESET_MARKER } from "#/constants";
 import { env } from "#/env";
 
 const xai = createXai({ apiKey: env.XAI_API_KEY });
 const model = xai("grok-4.20-non-reasoning");
-// Re-read on every message so edits apply without a restart
+
 const PERSONA_PATH = "config/persona.md";
+const CHAT_RULES_PATH = "config/chat-rules.md";
 const HISTORY_LIMIT = 30;
-// Only the bot's latest replies go in the log, otherwise it copies its own insults
 const OWN_REPLIES_IN_LOG = 3;
 const RECENT_REPLIES_TO_AVOID = 6;
 const FALLBACK_REPLY = "og?";
-
-// Added after the persona, so it applies whatever the persona file says
-const CHAT_RULES = `
-
-## Å kjenne folk
-- Chatloggen viser hvem som skrev hver melding. Hold styr på hvem som sa hva, og bland aldri sammen folk.
-- Alle er forskjellige. Bruk det du vet om hver person (notatene under og det de har sagt tidligere) så roasten treffer akkurat DEM. Aldri bruk samme fornærmelse på to folk.
-- Svar på det personen FAKTISK skrev. Roasten skal handle om innholdet i meldingen deres.
-- Når folk snakker med hverandre kan du ta side, sette dem opp mot hverandre, eller roaste begge på hver sin måte.
-- Dra fram ting folk sa tidligere i samtalen.`;
 
 function authorName(msg: Message, botId: string) {
 	if (msg.author.id === botId) return "Guttasjefen (deg)";
@@ -59,7 +50,13 @@ export async function replyWithAI(message: Message<true>) {
 		limit: HISTORY_LIMIT,
 		before: message.id,
 	});
-	const log = [...recent.values()].reverse().filter((m) => m.content);
+	const all = [...recent.values()];
+	const reset = all.findIndex(
+		(m) => m.author.id === botId && m.content === CHAT_RESET_MARKER,
+	);
+	const log = (reset === -1 ? all : all.slice(0, reset))
+		.reverse()
+		.filter((m) => m.content);
 
 	const ownReplies = log.filter((m) => m.author.id === botId);
 	const keptOwn = new Set(ownReplies.slice(-OWN_REPLIES_IN_LOG));
@@ -80,7 +77,10 @@ export async function replyWithAI(message: Message<true>) {
 		.join("\n");
 	const name = authorName(message, botId);
 
-	const persona = await readFile(PERSONA_PATH, "utf8");
+	const [persona, rules] = await Promise.all([
+		readFile(PERSONA_PATH, "utf8"),
+		readFile(CHAT_RULES_PATH, "utf8"),
+	]);
 	const profiles = describeProfiles(
 		await loadProfiles(),
 		new Set(people.keys()),
@@ -90,7 +90,7 @@ export async function replyWithAI(message: Message<true>) {
 		model,
 		maxOutputTokens: 200,
 		temperature: 1,
-		system: persona + CHAT_RULES + profiles,
+		system: `${persona.trim()}\n\n${rules.trim()}${profiles}`,
 		prompt: [
 			`Chatlogg:\n${transcript}`,
 			`Du svarer nå ${name}. Meldingen deres: ${cleanContent(message, botId)}`,
@@ -107,7 +107,6 @@ export async function replyWithAI(message: Message<true>) {
 		return;
 	}
 
-	// Keep only the first line, and strip a "Guttasjefen:" prefix if the model copies the log format
 	const reply =
 		text
 			.trim()

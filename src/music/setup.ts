@@ -3,9 +3,9 @@ import type { Client } from "discord.js";
 import { Player } from "discord-player";
 import { YoutubeExtractor } from "discord-player-youtubei";
 import { env } from "#/env";
-import { CustomSpotifyExtractor } from "#/extractors/spotify-extractor";
-import { youtubeOptions } from "#/extractors/youtube-extractor";
-import { registerAnnouncements } from "#/player/announcements";
+import { registerAnnouncements } from "#/music/announcements";
+import { CustomSpotifyExtractor } from "#/music/extractors/spotify";
+import { youtubeOptions } from "#/music/extractors/youtube";
 
 export async function setupPlayer(client: Client) {
 	const player = new Player(client);

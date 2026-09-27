@@ -7,7 +7,7 @@ const runtimeSchema = z.object({
 	DISCORD_TOKEN: z.string().min(1),
 	DP_SPOTIFY_CLIENT_ID: z.string().optional(),
 	DP_SPOTIFY_CLIENT_SECRET: z.string().optional(),
-	DEBUG_PLAYER: z.string().optional(),
+	DEBUG_PLAYER: z.stringbool().default(false),
 	YOUTUBE_COOKIES_PATH: z.string().optional(),
 	XAI_API_KEY: z.string().min(1),
 });

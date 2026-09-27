@@ -12,8 +12,11 @@ export const help: Command = {
 	name: "help",
 	aliases: ["h", "?"],
 	description: "Show help and list available commands",
+	anyChannel: true,
 	async run(ctx) {
 		const lines = commands.map((cmd) => {
+			if (cmd.slashOnly) return `**/${cmd.name}**\n-# ${cmd.description}`;
+
 			const arg = cmd.argument ? ` \`${formatArgument(cmd.argument)}\`` : "";
 			const aliases = cmd.aliases?.length
 				? ` (${cmd.aliases.map((alias) => `${CMD_PREFIX}${alias}`).join(", ")})`

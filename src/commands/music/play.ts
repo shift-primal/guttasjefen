@@ -1,14 +1,47 @@
 import type { VoiceBasedChannel } from "discord.js";
 import { type GuildQueue, useMainPlayer, useQueue } from "discord-player";
 import { requireVoiceChannel } from "#/commands/guards";
-import { QUEUE_OPTIONS } from "#/player/queue-options";
-import { skipCurrent } from "#/player/skip";
-import type { CommandContext } from "#/types";
+import { QUEUE_OPTIONS } from "#/music/queue-options";
+import { skipCurrent } from "#/music/skip";
+import type { Command, CommandContext, QueueMetadata } from "#/types";
 import { formatPlaylist, formatTrack } from "#/ui/format";
 
-export type EnqueueMode = "end" | "next" | "now";
+type EnqueueMode = "end" | "next" | "now";
 
-export async function enqueue(ctx: CommandContext, mode: EnqueueMode) {
+export const play: Command = {
+	name: "play",
+	aliases: ["p"],
+	description: "Play a song in a voice channel",
+	argument: { name: "song", description: "The song to play", required: true },
+	run: (ctx) => enqueue(ctx, "end"),
+};
+
+export const playNext: Command = {
+	name: "playnext",
+	aliases: ["pn"],
+	description:
+		"Put a song at the top of the queue, without skipping the current one",
+	argument: {
+		name: "song",
+		description: "The song to play next",
+		required: true,
+	},
+	run: (ctx) => enqueue(ctx, "next"),
+};
+
+export const playNow: Command = {
+	name: "playnow",
+	aliases: ["pnow"],
+	description: "Skip the current song and play this one now, keeping the queue",
+	argument: {
+		name: "song",
+		description: "The song to play right now",
+		required: true,
+	},
+	run: (ctx) => enqueue(ctx, "now"),
+};
+
+async function enqueue(ctx: CommandContext, mode: EnqueueMode) {
 	const voiceChannel = await requireVoiceChannel(ctx);
 	if (!voiceChannel) return;
 
@@ -29,10 +62,14 @@ export async function enqueue(ctx: CommandContext, mode: EnqueueMode) {
 }
 
 async function playAtEnd(ctx: CommandContext, voiceChannel: VoiceBasedChannel) {
+	const metadata: QueueMetadata = { channel: ctx.channel };
 	const { track, queue, searchResult } = await useMainPlayer().play(
 		voiceChannel,
 		ctx.args,
-		{ nodeOptions: { metadata: { channel: ctx.channel }, ...QUEUE_OPTIONS } },
+		{
+			requestedBy: ctx.member.user,
+			nodeOptions: { metadata, ...QUEUE_OPTIONS },
+		},
 	);
 	const { playlist } = searchResult;
 	const isPlayingNow = queue.currentTrack?.id === track.id;

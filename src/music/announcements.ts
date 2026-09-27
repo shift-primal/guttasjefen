@@ -6,7 +6,7 @@ import {
 	TrackSkipReason,
 } from "discord-player";
 import { LEAVE_ON_END_MS, MAX_TRACK_RETRIES } from "#/constants";
-import { createRetryTracker } from "#/player/retry";
+import { createRetryTracker } from "#/music/retry";
 import type { QueueMetadata } from "#/types";
 import { buildControls } from "#/ui/controls";
 import { formatNowPlaying, formatTrack } from "#/ui/format";

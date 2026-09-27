@@ -1,20 +1,32 @@
-import { type Client, Events, type Message } from "discord.js";
+import {
+	type ButtonInteraction,
+	type Client,
+	Events,
+	type Message,
+} from "discord.js";
 import { replyWithAI } from "#/ai/chat";
 import { describeChannels, isAIChannel, isMusicChannel } from "#/bot/channels";
 import { fromInteraction, fromMessage } from "#/bot/context";
 import { findCommand } from "#/commands";
 import { CMD_PREFIX, MUSIC_CHANNEL_KEYWORDS } from "#/constants";
 import type { Command, CommandContext } from "#/types";
-import { handleControl } from "#/ui/controls";
+import { CONTROL_ID_PREFIX, handleControl } from "#/ui/controls";
 import { formatArgument } from "#/ui/format";
-import { handleQueuePage } from "#/ui/queue";
+import { handleQueuePage, QUEUE_ID_PREFIX } from "#/ui/queue";
+
+const buttonHandlers: [string, (i: ButtonInteraction) => Promise<void>][] = [
+	[CONTROL_ID_PREFIX, handleControl],
+	[QUEUE_ID_PREFIX, handleQueuePage],
+];
 
 async function runCommand(command: Command, ctx: CommandContext) {
 	try {
 		await command.run(ctx);
 	} catch (error) {
-		console.error(error);
-		await ctx.reply("Something went wrong.", { ephemeral: true });
+		console.error(`[command ${command.name}]`, error);
+		await ctx
+			.reply("Something went wrong.", { ephemeral: true })
+			.catch(console.error);
 	}
 }
 
@@ -31,14 +43,15 @@ function parsePrefixed(content: string) {
 async function onMessage(message: Message) {
 	if (message.author.bot || !message.inGuild()) return;
 
-	const mentioned = message.mentions.has(message.client.user, {
-		ignoreEveryone: true,
-		ignoreRoles: true,
-	});
 	const parsed = parsePrefixed(message.content);
-	const command = parsed && findCommand(parsed.name);
+	const found = parsed && findCommand(parsed.name);
+	const command = found && !found.slashOnly ? found : undefined;
 
-	if (!command) {
+	if (!parsed || !command) {
+		const mentioned = message.mentions.has(message.client.user, {
+			ignoreEveryone: true,
+			ignoreRoles: true,
+		});
 		if (mentioned || isAIChannel(message.channel.name)) {
 			await replyWithAI(message).catch(console.error);
 		}
@@ -48,7 +61,7 @@ async function onMessage(message: Message) {
 	const ctx = fromMessage(message, parsed.args);
 	if (!ctx) return;
 
-	if (command.name !== "help" && !isMusicChannel(message.channel.name)) {
+	if (!command.anyChannel && !isMusicChannel(message.channel.name)) {
 		await ctx.reply(
 			`Commands can only be used in ${describeChannels(MUSIC_CHANNEL_KEYWORDS)}.`,
 		);
@@ -68,12 +81,10 @@ async function onMessage(message: Message) {
 export function registerHandlers(client: Client) {
 	client.on(Events.InteractionCreate, async (interaction) => {
 		if (interaction.isButton()) {
-			try {
-				await handleControl(interaction);
-				await handleQueuePage(interaction);
-			} catch (error) {
-				console.error(error);
-			}
+			const handler = buttonHandlers.find(([prefix]) =>
+				interaction.customId.startsWith(prefix),
+			)?.[1];
+			await handler?.(interaction).catch(console.error);
 			return;
 		}
 
@@ -86,5 +97,7 @@ export function registerHandlers(client: Client) {
 		await runCommand(command, ctx);
 	});
 
-	client.on(Events.MessageCreate, onMessage);
+	client.on(Events.MessageCreate, (message) => {
+		onMessage(message).catch(console.error);
+	});
 }

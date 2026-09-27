@@ -1,22 +1,20 @@
-import { help } from "#/commands/help";
-import { loop } from "#/commands/loop";
-import { nowplaying } from "#/commands/nowplaying";
-import { pause } from "#/commands/pause";
-import { ping } from "#/commands/ping";
-import { play } from "#/commands/play";
-import { playNext } from "#/commands/playnext";
-import { playNow } from "#/commands/playnow";
-import { queue } from "#/commands/queue";
-import { remove } from "#/commands/remove";
-import { resume } from "#/commands/resume";
-import { shuffle } from "#/commands/shuffle";
-import { skip } from "#/commands/skip";
-import { skipTo } from "#/commands/skipto";
-import { stop } from "#/commands/stop";
+import { reset } from "#/commands/chat/reset";
+import { help } from "#/commands/general/help";
+import { ping } from "#/commands/general/ping";
+import { loop } from "#/commands/music/loop";
+import { nowplaying } from "#/commands/music/nowplaying";
+import { pause } from "#/commands/music/pause";
+import { play, playNext, playNow } from "#/commands/music/play";
+import { queue } from "#/commands/music/queue";
+import { remove } from "#/commands/music/remove";
+import { resume } from "#/commands/music/resume";
+import { shuffle } from "#/commands/music/shuffle";
+import { skip } from "#/commands/music/skip";
+import { skipTo } from "#/commands/music/skipto";
+import { stop } from "#/commands/music/stop";
 import type { Command } from "#/types";
 
 export const commands: Command[] = [
-	ping,
 	play,
 	playNext,
 	playNow,
@@ -30,7 +28,9 @@ export const commands: Command[] = [
 	queue,
 	shuffle,
 	loop,
-	help,
+	reset,
+  help,
+  ping,
 ];
 
 const byName = new Map<string, Command>(

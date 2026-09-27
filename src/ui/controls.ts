@@ -5,44 +5,31 @@ import {
 	ButtonStyle,
 	MessageFlags,
 } from "discord.js";
-import { QueueRepeatMode, useQueue } from "discord-player";
-import { nextRepeatMode } from "#/player/repeat-mode";
-import { skipCurrent } from "#/player/skip";
+import { QueueRepeatMode } from "discord-player";
+import { checkQueueAccess } from "#/music/access";
+import { nextRepeatMode, repeatModeInfo } from "#/music/repeat-mode";
+import { skipCurrent } from "#/music/skip";
 
-const ID_PREFIX = "ctl:";
+export const CONTROL_ID_PREFIX = "ctl:";
 
-export type ControlAction = "toggle" | "skip" | "stop" | "shuffle" | "loop";
+const ACTIONS = ["toggle", "skip", "stop", "shuffle", "loop"] as const;
 
-const ACTIONS: readonly ControlAction[] = [
-	"toggle",
-	"skip",
-	"stop",
-	"shuffle",
-	"loop",
-];
-
-const LOOP_LABELS: Record<QueueRepeatMode, string> = {
-	[QueueRepeatMode.OFF]: "off",
-	[QueueRepeatMode.TRACK]: "track",
-	[QueueRepeatMode.QUEUE]: "queue",
-	[QueueRepeatMode.AUTOPLAY]: "autoplay",
-};
+type ControlAction = (typeof ACTIONS)[number];
 
 export interface ControlState {
 	paused: boolean;
 	repeatMode: QueueRepeatMode;
 }
 
-export function parseControlId(id: string): ControlAction | null {
-	if (!id.startsWith(ID_PREFIX)) return null;
-	const action = id.slice(ID_PREFIX.length);
+function parseControlId(id: string): ControlAction | null {
+	const action = id.slice(CONTROL_ID_PREFIX.length);
 	return ACTIONS.find((known) => known === action) ?? null;
 }
 
 export function buildControls({ paused, repeatMode }: ControlState) {
 	const button = (action: ControlAction, label: string, style: ButtonStyle) =>
 		new ButtonBuilder()
-			.setCustomId(`${ID_PREFIX}${action}`)
+			.setCustomId(`${CONTROL_ID_PREFIX}${action}`)
 			.setLabel(label)
 			.setStyle(style);
 
@@ -53,7 +40,7 @@ export function buildControls({ paused, repeatMode }: ControlState) {
 			button("shuffle", "🔀 Shuffle", ButtonStyle.Secondary),
 			button(
 				"loop",
-				`🔁 Loop: ${LOOP_LABELS[repeatMode]}`,
+				`🔁 Loop: ${repeatModeInfo(repeatMode).names[0]}`,
 				repeatMode === QueueRepeatMode.OFF
 					? ButtonStyle.Secondary
 					: ButtonStyle.Success,
@@ -63,62 +50,49 @@ export function buildControls({ paused, repeatMode }: ControlState) {
 	];
 }
 
-function ephemeral(interaction: ButtonInteraction, content: string) {
-	return interaction.reply({ content, flags: MessageFlags.Ephemeral });
+async function ephemeral(interaction: ButtonInteraction, content: string) {
+	await interaction.reply({ content, flags: MessageFlags.Ephemeral });
 }
 
 export async function handleControl(interaction: ButtonInteraction) {
 	const action = parseControlId(interaction.customId);
 	if (!action || !interaction.inCachedGuild()) return;
 
-	const queue = useQueue(interaction.guild);
-	if (!queue?.currentTrack) {
-		await ephemeral(interaction, "Nothing is playing right now.");
-		return;
-	}
-	if (interaction.member.voice.channelId !== queue.channel?.id) {
-		await ephemeral(
-			interaction,
-			"You need to be in my voice channel to do that!",
-		);
-		return;
-	}
+	const queue = checkQueueAccess(interaction.guild, interaction.member);
+	if (typeof queue === "string") return ephemeral(interaction, queue);
 
-	const refresh = () =>
-		interaction.update({
+	const refresh = async () => {
+		await interaction.update({
 			components: buildControls({
 				paused: queue.node.isPaused(),
 				repeatMode: queue.repeatMode,
 			}),
 		});
+	};
 
 	switch (action) {
 		case "toggle":
 			queue.node.setPaused(!queue.node.isPaused());
-			await refresh();
-			break;
+			return refresh();
 		case "loop":
 			queue.setRepeatMode(nextRepeatMode(queue.repeatMode));
-			await refresh();
-			break;
+			return refresh();
 		case "shuffle":
 			if (queue.tracks.size < 2) {
-				await ephemeral(
+				return ephemeral(
 					interaction,
 					"Not enough tracks in the queue to shuffle.",
 				);
-				return;
 			}
 			queue.tracks.shuffle();
-			await refresh();
-			break;
+			return refresh();
 		case "skip":
 			await interaction.deferUpdate();
 			skipCurrent(queue);
-			break;
+			return;
 		case "stop":
 			await interaction.update({ components: [] });
 			queue.delete();
-			break;
+			return;
 	}
 }

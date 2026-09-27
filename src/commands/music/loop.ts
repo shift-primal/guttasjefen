@@ -1,5 +1,9 @@
 import { refuse, requireQueue } from "#/commands/guards";
-import { MODES, nextRepeatMode } from "#/player/repeat-mode";
+import {
+	findRepeatMode,
+	nextRepeatMode,
+	repeatModeInfo,
+} from "#/music/repeat-mode";
 import type { Command } from "#/types";
 
 export const loop: Command = {
@@ -14,11 +18,9 @@ export const loop: Command = {
 		const queue = await requireQueue(ctx);
 		if (!queue) return;
 
-		const requested = ctx.args.toLowerCase();
-		const next = nextRepeatMode(queue.repeatMode);
-		const chosen = requested
-			? MODES.find((m) => m.names.includes(requested))
-			: MODES.find((m) => m.mode === next);
+		const chosen = ctx.args
+			? findRepeatMode(ctx.args)
+			: repeatModeInfo(nextRepeatMode(queue.repeatMode));
 		if (!chosen) {
 			return refuse(ctx, "Mode must be one of: off, track, queue, autoplay.");
 		}
