@@ -1,16 +1,22 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
-import { generateText } from "ai";
-import { model, REPLY_OPTIONS } from "#/ai/model";
+import { REPLY_OPTIONS } from "#/ai/model";
 import { describeProfiles, loadProfiles } from "#/ai/profiles";
 import {
 	buildSystem,
 	buildUserPrompt,
 	CONFIG_DIR,
-	cleanReply,
 	OWN_REPLY_PLACEHOLDER,
 } from "#/ai/prompt";
+import {
+	BEST_OF,
+	generateCandidates,
+	generateCandidatesTogether,
+	pickBest,
+} from "#/ai/reply";
 
 const CONCURRENCY = 6;
 const BOT_NAME = /^(bot|guttasjefen)$/i;
@@ -29,6 +35,10 @@ const { values, positionals } = parseArgs({
 		profiles: { type: "boolean", default: false },
 		"show-prompt": { type: "boolean", default: false },
 		quiet: { type: "boolean", short: "q", default: false },
+		temperature: { type: "string", short: "t" },
+		"best-of": { type: "string", short: "b", default: String(BEST_OF) },
+		verbose: { type: "boolean", short: "v", default: false },
+		separate: { type: "boolean", default: false },
 	},
 });
 
@@ -65,7 +75,7 @@ function parseScenario(text: string): Line[] {
 async function loadScenario(arg: string | undefined) {
 	if (!arg) {
 		console.error(
-			"Usage: pnpm test-prompt <scenario file | message> [-n 20] [--count regex] [--config dir] [--profiles] [--show-prompt] [-q]",
+			"Usage: pnpm test-prompt <scenario file | message> [-n 20] [-t temperature] [-b best-of] [--separate] [-v] [--count regex] [--config dir] [--profiles] [--show-prompt] [-q]",
 		);
 		process.exit(1);
 	}
@@ -134,31 +144,71 @@ const transcript = lines
 const name = last.name.replace(/\s*\(.*\)$/, "");
 const profiles = await profilesFor(lines);
 
+const bestOf = Number(values["best-of"]);
+const together = !values.separate && bestOf > 1;
+
 if (values["show-prompt"]) {
-	const system = await buildSystem(profiles, values.config);
-	const prompt = buildUserPrompt(transcript, name, last.text, system.move);
+	const system = await buildSystem(profiles, "show-prompt", values.config);
+	const prompt = buildUserPrompt(
+		transcript,
+		name,
+		last.text,
+		system.mood,
+		together ? bestOf : 1,
+	);
 	console.log(`=== SYSTEM ===\n${system.text}\n\n=== USER ===\n${prompt}\n`);
 }
 
-console.log(`Running ${runs}× against "${last.text}" with ${values.config}/\n`);
+const temperature = values.temperature
+	? Number(values.temperature)
+	: REPLY_OPTIONS.temperature;
+console.log(
+	`Running ${runs}× against "${last.text}" with ${values.config}/ at temperature ${temperature}, best of ${bestOf}${together ? " (one call)" : ""}\n`,
+);
+
+let printed = 0;
 
 const results = await mapLimit(
-	Array.from({ length: runs }),
+	Array.from({ length: runs }, (_, i) => i),
 	CONCURRENCY,
-	async () => {
-		const system = await buildSystem(profiles, values.config);
-		const prompt = buildUserPrompt(transcript, name, last.text, system.move);
+	async (run) => {
+		const system = await buildSystem(profiles, `run-${run}`, values.config);
+		const prompt = buildUserPrompt(
+			transcript,
+			name,
+			last.text,
+			system.mood,
+			together ? bestOf : 1,
+		);
+		const started = performance.now();
 		try {
-			const { text, finishReason } = await generateText({
-				model,
-				...REPLY_OPTIONS,
-				system: system.text,
-				messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
-			});
-			const reply = cleanReply(text) ?? "";
-			if (!values.quiet)
-				console.log(`  ${`[${system.moveName ?? "-"}]`.padEnd(26)} ${reply}`);
-			return { reply, finishReason };
+			const content = [{ type: "text" as const, text: prompt }];
+			const candidates = together
+				? await generateCandidatesTogether(system.text, content, temperature)
+				: await generateCandidates(system.text, content, bestOf, temperature);
+			const picked = await pickBest(
+				candidates.map((c) => c.reply),
+				{ transcript, name, content: last.text },
+			);
+			const { reply, finishReason } = candidates[picked] ?? {
+				reply: "",
+				finishReason: "error",
+			};
+			const number = ++printed;
+			if (!values.quiet) {
+				console.log(
+					`${String(number).padStart(4)}  ${`[${system.moodName ?? "-"}]`.padEnd(14)} ${reply}`,
+				);
+				if (values.verbose)
+					for (const [i, c] of candidates.entries())
+						if (i !== picked) console.log(`${" ".repeat(21)}✗ ${c.reply}`);
+			}
+			return {
+				reply,
+				finishReason,
+				number,
+				seconds: (performance.now() - started) / 1000,
+			};
 		} catch (error) {
 			console.log(`  [error] ${(error as Error).message}`);
 			return null;
@@ -172,7 +222,7 @@ const pct = (count: number) => `${count}/${n}`;
 
 console.log("\n=== Summary ===");
 console.log(
-	`replies: ${n}${n < runs ? ` (${runs - n} failed)` : ""}, avg ${(ok.reduce((sum, r) => sum + r.reply.split(/\s+/).length, 0) / n).toFixed(1)} words`,
+	`replies: ${n}${n < runs ? ` (${runs - n} failed)` : ""}, avg ${(ok.reduce((sum, r) => sum + r.reply.split(/\s+/).length, 0) / n).toFixed(1)} words, avg ${(ok.reduce((sum, r) => sum + r.seconds, 0) / n).toFixed(1)}s per reply`,
 );
 const runaways = ok.filter(
 	(r) => r.finishReason === "length" || isLoop(r.reply),
@@ -204,3 +254,31 @@ for (const pattern of values.count) {
 		`/${pattern}/: ${pct(ok.filter((r) => re.test(r.reply)).length)}`,
 	);
 }
+
+async function pickFavourites() {
+	const rl = createInterface({ input: process.stdin, output: process.stdout });
+	const answer = await rl.question(
+		"\nFavourites to add to examples.txt (e.g. 3,7,12, empty to skip): ",
+	);
+	rl.close();
+
+	const numbers = new Set(
+		answer
+			.split(/[\s,]+/)
+			.filter(Boolean)
+			.map(Number),
+	);
+	const path = join(values.config, "examples.txt");
+	const existing = await readFile(path, "utf8").catch(() => "");
+	const added = ok
+		.filter((r) => numbers.has(r.number) && r.reply)
+		.map((r) => `${last.text} → ${r.reply}`)
+		.filter((line) => !existing.includes(line));
+	if (added.length === 0) return;
+
+	const separator = existing && !existing.endsWith("\n") ? "\n" : "";
+	await appendFile(path, `${separator}${added.join("\n")}\n`);
+	console.log(`Added ${added.length} to ${path}`);
+}
+
+if (process.stdin.isTTY && !values.quiet && ok.length) await pickFavourites();

@@ -1,7 +1,7 @@
-import { type FilePart, generateText, type TextPart } from "ai";
+import type { FilePart, TextPart } from "ai";
 import type { Message } from "discord.js";
 import { imageUrls } from "#/ai/images";
-import { model, REPLY_OPTIONS } from "#/ai/model";
+import { model } from "#/ai/model";
 import {
 	describeProfiles,
 	loadProfiles,
@@ -10,9 +10,9 @@ import {
 import {
 	buildSystem,
 	buildUserPrompt,
-	cleanReply,
 	OWN_REPLY_PLACEHOLDER,
 } from "#/ai/prompt";
+import { BEST_OF, generateCandidatesTogether, pickBest } from "#/ai/reply";
 import { CHAT_RESET_MARKER } from "#/constants";
 import { elapsed, preview } from "#/log";
 
@@ -89,47 +89,58 @@ export async function replyWithAI(message: Message<true>) {
 		await loadProfiles(),
 		new Set(people.keys()),
 	);
-	const system = await buildSystem(profiles);
+	const system = await buildSystem(profiles, message.channelId);
 	const prompt = buildUserPrompt(
 		transcript,
 		name,
 		describeContent(message, botId),
-		system.move,
+		system.mood,
+		BEST_OF,
 	);
 	const images = await imageParts(message, name);
 
 	const generate = (content: (TextPart | FilePart)[]) =>
-		generateText({
-			model,
-			...REPLY_OPTIONS,
-			system: system.text,
-			messages: [{ role: "user", content }],
-		});
+		generateCandidatesTogether(system.text, content);
 
 	const textPart: TextPart = { type: "text", text: prompt };
 	const generateStart = performance.now();
-	const { text, finishReason } = images.length
+	const candidates = images.length
 		? await generate([textPart, ...images]).catch((error) => {
 				console.error("Reply with images failed, retrying without:", error);
 				return generate([textPart]);
 			})
 		: await generate([textPart]);
-	const generateTime = elapsed(generateStart);
 	const imageCount = images.filter((p) => p.type === "file").length;
 
-	if (finishReason === "content-filter") {
+	const usable = [
+		...new Set(
+			candidates
+				.filter((c) => c.finishReason !== "content-filter" && c.reply)
+				.map((c) => c.reply),
+		),
+	];
+	if (
+		usable.length === 0 &&
+		candidates.some((c) => c.finishReason === "content-filter")
+	) {
 		await message.reply("Nah, can't help with that one.");
 		return;
 	}
 
-	const reply = cleanReply(text) || FALLBACK_REPLY;
+	const picked = await pickBest(usable, {
+		transcript,
+		name,
+		content: describeContent(message, botId),
+	});
+	const generateTime = elapsed(generateStart);
+	const reply = usable[picked] || FALLBACK_REPLY;
 
 	await message.reply({
 		content: reply.slice(0, 2000),
 		allowedMentions: { parse: [] },
 	});
 	console.log(
-		`[ai] replied in ${elapsed(start)} (xai ${generateTime}${imageCount ? `, ${imageCount} images` : ""}${system.moveName ? `, ${system.moveName}` : ""}): ${preview(reply)}`,
+		`[ai] replied in ${elapsed(start)} (xai ${generateTime}, picked ${picked + 1}/${usable.length}${imageCount ? `, ${imageCount} images` : ""}${system.moodName ? `, ${system.moodName}` : ""}): ${preview(reply)}`,
 	);
 
 	const peopleTranscript = [...log, message]

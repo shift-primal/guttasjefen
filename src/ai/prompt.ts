@@ -3,9 +3,13 @@ import { join } from "node:path";
 
 export const CONFIG_DIR = "config";
 const EXAMPLES_PER_REPLY = 3;
+const MOOD_MIN_MS = 30 * 60_000;
+const MOOD_MAX_MS = 120 * 60_000;
 export const OWN_REPLY_PLACEHOLDER = "[ditt svar, skjult]";
 
-export type SystemPrompt = { text: string; move?: string; moveName?: string };
+export type SystemPrompt = { text: string; mood?: string; moodName?: string };
+
+const moods = new Map<string, { mood: string; until: number }>();
 
 async function readOptional(path: string) {
 	try {
@@ -36,18 +40,31 @@ function formatExample(entry: string) {
 	return reply ? `- ${message} → ${reply}` : `- ${entry}`;
 }
 
+function currentMood(moodKey: string, pool: string[]) {
+	const existing = moods.get(moodKey);
+	if (existing && existing.until > Date.now() && pool.includes(existing.mood))
+		return existing.mood;
+	const [mood] = pickRandom(pool, 1);
+	if (mood) {
+		const duration = MOOD_MIN_MS + Math.random() * (MOOD_MAX_MS - MOOD_MIN_MS);
+		moods.set(moodKey, { mood, until: Date.now() + duration });
+	}
+	return mood;
+}
+
 export async function buildSystem(
 	profiles: string,
+	moodKey: string,
 	configDir = CONFIG_DIR,
 ): Promise<SystemPrompt> {
-	const [persona, rules, moves, examples] = await Promise.all([
+	const [persona, rules, moodPool, examples] = await Promise.all([
 		readFile(join(configDir, "persona.md"), "utf8"),
 		readFile(join(configDir, "chat-rules.md"), "utf8"),
-		readOptional(join(configDir, "moves.txt")),
+		readOptional(join(configDir, "moods.txt")),
 		readOptional(join(configDir, "examples.txt")),
 	]);
 
-	const [move] = pickRandom(poolEntries(moves), 1);
+	const mood = currentMood(moodKey, poolEntries(moodPool));
 	const shown = pickRandom(poolEntries(examples), EXAMPLES_PER_REPLY);
 
 	const examplesSection = shown.length
@@ -58,21 +75,26 @@ export async function buildSystem(
 		.filter(Boolean)
 		.join("\n\n");
 
-	return { text, move, moveName: move?.split(":")[0] };
+	return { text, mood, moodName: mood?.split(":")[0] };
 }
 
 export function buildUserPrompt(
 	transcript: string,
 	name: string,
 	content: string,
-	move?: string,
+	mood?: string,
+	count = 1,
 ) {
+	const instruction =
+		count > 1
+			? `Skriv ${count} ulike svar, nummerert 1 til ${count}, ett per linje, uten navn eller tidsstempel. Hvert svar skal ta en helt annen vinkel på meldingen, ikke bare si det samme med andre ord.`
+			: "Skriv kun svaret ditt, én linje, uten navn eller tidsstempel foran.";
 	return [
 		`Chatlogg:\n${transcript}`,
 		`Du svarer nå ${name}. Meldingen deres: ${content}`,
-		move &&
-			`Trekket ditt denne gangen: ${move}\nPasser det overhodet ikke, gjør noe annet, bare ikke det du pleier.`,
-		"Skriv kun svaret ditt, én linje, uten navn eller tidsstempel foran.",
+		mood &&
+			`Humøret ditt i dag (farger tonen, men ikke nevn det eller gjør et nummer ut av det): ${mood}`,
+		instruction,
 	]
 		.filter(Boolean)
 		.join("\n\n");
