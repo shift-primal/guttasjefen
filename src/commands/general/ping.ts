@@ -2,7 +2,7 @@ import type { Command } from "#/types";
 
 export const ping: Command = {
 	name: "ping",
-	description: "Pong!",
+	description: "Pong! (Used to test if the bot is online)",
 	async run(ctx) {
 		await ctx.reply("Pong!");
 	},

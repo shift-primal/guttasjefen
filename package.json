@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"description": "discord bot",
 	"main": "src/index.ts",
-	"packageManager": "pnpm@12.5.1",
+	"packageManager": "pnpm@12.6.0",
 	"type": "module",
 	"imports": {
 		"#/*": "./src/*"
@@ -19,7 +19,7 @@
 	"devEngines": {
 		"packageManager": {
 			"name": "pnpm",
-			"version": "12.5.1",
+			"version": "12.6.0",
 			"onFail": "download"
 		}
 	},
