@@ -18,7 +18,9 @@ const model = xai("grok-4.20-non-reasoning");
 const PERSONA_PATH = "config/persona.md";
 const CHAT_RULES_PATH = "config/chat-rules.md";
 const HISTORY_LIMIT = 15;
-const OWN_REPLIES_IN_LOG = 1;
+// The bot's own replies are hidden from the log: the model copies the
+// structure of whatever it said last, so every reply turns into a template.
+const OWN_REPLY_PLACEHOLDER = "[ditt svar, skjult]";
 const FALLBACK_REPLY = "og?";
 const MAX_IMAGES = 4;
 
@@ -48,7 +50,11 @@ function formatLine(msg: Message, botId: string) {
 	const replyTo = target
 		? ` (svarer ${target.id === botId ? "deg" : target.displayName})`
 		: "";
-	return `[${time}] ${authorName(msg, botId)}${replyTo}: ${describeContent(msg, botId)}`;
+	const content =
+		msg.author.id === botId
+			? OWN_REPLY_PLACEHOLDER
+			: describeContent(msg, botId);
+	return `[${time}] ${authorName(msg, botId)}${replyTo}: ${content}`;
 }
 
 export async function replyWithAI(message: Message<true>) {
@@ -71,10 +77,7 @@ export async function replyWithAI(message: Message<true>) {
 		.reverse()
 		.filter((m) => m.content || imageUrls(m).length > 0);
 
-	const ownReplies = log.filter((m) => m.author.id === botId);
-	const keptOwn = new Set(ownReplies.slice(-OWN_REPLIES_IN_LOG));
-	const lines = log.filter((m) => m.author.id !== botId || keptOwn.has(m));
-	const transcript = [...lines, message]
+	const transcript = [...log, message]
 		.map((m) => formatLine(m, botId))
 		.join("\n");
 
