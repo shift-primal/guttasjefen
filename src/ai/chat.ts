@@ -10,6 +10,7 @@ import {
 } from "#/ai/profiles";
 import { buildSystem, buildUserPrompt } from "#/ai/prompt";
 import { generateCandidatesTogether, pickBest } from "#/ai/reply";
+import { jitterTaste, loadTaste, strongDials } from "#/ai/taste";
 import {
 	BEST_OF,
 	HISTORY_LIMIT,
@@ -99,12 +100,14 @@ export async function replyWithAI(message: Message<true>) {
 	}
 
 	const profiles = describeProfiles(await loadProfiles(), people);
-	const system = await buildSystem(profiles);
+	const taste = jitterTaste(await loadTaste());
+	const system = await buildSystem(profiles, taste);
 	const prompt = buildUserPrompt(
 		transcript,
 		author,
 		contentDescription,
 		BEST_OF,
+		taste,
 	);
 	const images = await imageParts(message, author);
 
@@ -144,6 +147,7 @@ export async function replyWithAI(message: Message<true>) {
 		past: own.map((m) => m.content),
 		others: peopleTranscript,
 		people: profiles,
+		strongDials: strongDials(taste),
 	});
 	const generateTime = elapsed(generateStart);
 	const reply = usable[picked] || AI_MESSAGES.FALLBACK_REPLY;

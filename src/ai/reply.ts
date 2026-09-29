@@ -2,12 +2,19 @@ import { type FilePart, generateText, type TextPart } from "ai";
 import { model } from "#/ai/model";
 import {
 	BEST_OF,
+	INSULT_TAIL_CHANCE,
 	JUDGE_MAX_TOKENS,
 	JUDGE_TEMPERATURE,
 	REPLY_OPTIONS,
 } from "#/config/ai";
-import { JUDGE_SYSTEM } from "#/config/prompts";
-import { cleanReply, reusedWords, sharesOpener } from "#/helpers/text";
+import { JUDGE_STRONG_DIALS_LABEL, JUDGE_SYSTEM } from "#/config/prompts";
+import { pickRandom } from "#/helpers/random";
+import {
+	cleanReply,
+	hasInsultTail,
+	reusedWords,
+	sharesOpener,
+} from "#/helpers/text";
 
 export type Candidate = { reply: string; finishReason: string };
 
@@ -66,17 +73,24 @@ type JudgeContext = {
 	recent: string[];
 	others: string;
 	people: string;
+	strongDials: string[];
 };
 
 export async function pickBest(
 	replies: string[],
 	context: JudgeContext & { past: string[] },
 ) {
-	// Drop replies that open like an earlier one, unless that would drop them all
-	const fresh = replies.flatMap((r, i) =>
-		sharesOpener(r, context.past) ? [] : [i],
+	const keep = (indices: number[], drop: (r: string) => boolean) => {
+		const kept = indices.filter((i) => !drop(replies[i] as string));
+		return kept.length ? kept : indices;
+	};
+	const fresh = keep(
+		replies.map((_, i) => i),
+		(r) => sharesOpener(r, context.past),
 	);
-	const pool = fresh.length ? fresh : replies.map((_, i) => i);
+	const allowTail = Math.random() < INSULT_TAIL_CHANCE;
+	const filtered = allowTail ? fresh : keep(fresh, hasInsultTail);
+	const pool = pickRandom(filtered, filtered.length);
 	const picked = await judge(
 		pool.map((i) => replies[i] as string),
 		context,
@@ -89,7 +103,6 @@ async function judge(replies: string[], context: JudgeContext) {
 	const reused = replies.map((r) =>
 		reusedWords(r, context.recent, context.others),
 	);
-	// The judge must never pick a tagged reply, so tagging all of them would leave no valid pick
 	const tag = reused.some((words) => words.length === 0);
 	const numbered = replies
 		.map(
@@ -100,13 +113,16 @@ async function judge(replies: string[], context: JudgeContext) {
 	const recent = context.recent.length
 		? `Guttasjefens siste svar:\n${context.recent.map((r) => `- ${r}`).join("\n")}\n\n`
 		: "";
+	const strong = context.strongDials.length
+		? `${JUDGE_STRONG_DIALS_LABEL}\n${context.strongDials.map((d) => `- ${d}`).join("\n")}\n\n`
+		: "";
 	try {
 		const { text } = await generateText({
 			model,
 			temperature: JUDGE_TEMPERATURE,
 			maxOutputTokens: JUDGE_MAX_TOKENS,
 			system: JUDGE_SYSTEM,
-			prompt: `Chatlogg:\n${context.transcript}${context.people}\n\n${recent}Siste melding, fra ${context.name}: ${context.content}\n\nSvar å velge mellom:\n${numbered}`,
+			prompt: `Chatlogg:\n${context.transcript}${context.people}\n\n${recent}${strong}Siste melding, fra ${context.name}: ${context.content}\n\nSvar å velge mellom:\n${numbered}`,
 		});
 		const picked = Number(text.match(/best:\s*(\d+)/i)?.[1]);
 		return picked >= 1 && picked <= replies.length ? picked - 1 : 0;

@@ -2,6 +2,8 @@ export const JUDGE_SYSTEM = `You pick the best reply for "Guttasjefen", a rude, 
 
 First, for each reply, write one line with a verdict:
 - "misread" if it gets the last message wrong: who has what, who wants what, who asked for what, or what happened. Check this literally against the message.
+- "broken" if it has a misspelled word (like "spur" for "spør") or a sentence that doesn't make sense as Norwegian. Casual spelling like lowercase or "hu" is fine.
+- "dodge" if the last message asks something directly (a name, a tip, an opinion) and the reply doesn't answer it: it only insults, refuses, says it forgot, or sends them to ask someone else.
 - "bit" if it reads like a comedy bit or a random non sequitur instead of a real person typing.
 - "repeat" if it reuses a joke, insult, phrase or opener from Guttasjefen's recent replies, keeps going on something Guttasjefen brought up earlier that the last message isn't about, or keeps arguing to defend something Guttasjefen said earlier instead of letting it go. Replies marked "(gjentar: ...)" reuse those words from Guttasjefen's recent replies and are always a "repeat".
 - "obvious" if it makes sense but is the comeback anyone would say. A generic "din <adjective> <noun>" tacked onto the end of a reply also makes it "obvious", unless the insult is about something specific to this person or message.
@@ -9,7 +11,7 @@ First, for each reply, write one line with a verdict:
 
 Guttasjefen usually talks in short, blunt, crude replies: a plain insult of a few words is normal for him, not a "bit" or "obvious" by itself. Never prefer a reply just because it is longer or more clever.
 
-Then pick the one a friend in the chat would actually laugh at: a "good" one if there is any, otherwise an "obvious" one. Never pick a "misread" or a "repeat".
+Then pick the one a friend in the chat would actually laugh at: a "good" one if there is any, otherwise an "obvious" one, and a "dodge" only if nothing else is left. Never pick a "misread", "broken" or "repeat".
 
 Answer in exactly this format and nothing else:
 1: <verdict>
@@ -25,6 +27,9 @@ export const USER_PROMPT_INSTRUCTIONS = {
 	multi: (count: number) =>
 		`Skriv ${count} ulike svar, nummerert 1 til ${count}, ett per linje, uten navn eller tidsstempel. Hvert svar skal ta en helt annen vinkel, f.eks. svare rett på det, spørre tilbake, være uenig, eller bare ikke gidde. Ikke start to svar på samme måte, og maks to av svarene kan starte med «nei» eller «ja». Maks ett svar kan ende med «din …», og minst ett svar skal være helt uten skjellsord.`,
 } as const;
+
+export const STRONG_DIALS_INSTRUCTION = (dials: string[], count: number) =>
+	`Gå helt inn for dette i ${count > 1 ? "alle svarene" : "svaret"}: ${dials.map((d) => `«${d}»`).join(", ")}. Det gjelder foran reglene over om stil, tone og lengde, men ikke foran reglene om å svare på det de faktisk spør om, eller om variasjon: ${count > 1 ? "spør de om noe, skal minst halvparten av svarene faktisk svare på det (finn på et svar om du må), hvert svar skal ha sin egen idé, og ingen to svar kan dele bilde, poeng eller åpning" : "spør de om noe, svar på det (finn på et svar om du må), og finn en idé som er spesifikk for akkurat denne meldingen, ikke den første og mest opplagte"}.`;
 
 export const REPLY_LENGTH_DESCRIPTIONS = {
 	SHORT: "1–5 ord",
@@ -58,6 +63,25 @@ export const AI_MESSAGES = {
 
 export const PROFILES_SECTION_HEADER =
 	"## Folk i chatten\nFolk blir kalt både navnet og brukernavnet sitt, det er samme person.";
+
+export const TASTE_SECTION_HEADER =
+	'## Humour settings\n\nWhat\'s funny here right now. Aim your replies at these settings. A setting marked "strongly" overrides anything above about style, tone or length.';
+
+export const JUDGE_STRONG_DIALS_LABEL =
+	'Guttasjefen is set to go hard in these directions right now. A reply is never a "bit" just for doing that, but every other verdict rule still applies:';
+
+export const DISTILL_DIALS_SYSTEM = `You study what one person finds funny. You get replies they liked, as "message → reply", and maybe some they disliked.
+
+Describe their sense of humour as 5 to 8 dials: independent axes the replies vary along, that someone could turn up or down to steer a writer. Dials are about how the joke works (how specific it is to the message, how absurd, how much effort it shows, how it attacks, how long it is...), never about topics. Every dial must actually vary across the liked replies; skip anything they all share. A length dial is only about length, never attitude (not "one word, dismissive"). Dials must not overlap: each end describes one thing only, never something another dial covers (e.g. if there is a dark humour dial, an absurdity dial is about surreal logic, not death or cruelty).
+
+Also write "notes": 2 to 4 sentences on what the liked replies have in common, and what separates them from the disliked ones if there are any.
+
+Answer ONLY with JSON:
+{"notes": "...", "dials": {"snake_case_name": {"low": "what one end looks like, a few words", "high": "what the other end looks like, a few words"}}}`;
+
+export const TAG_EXAMPLES_SYSTEM = `You rate replies on humour dials. Each dial goes from -2 (fully its "low" end) to 2 (fully its "high" end), with 0 in between. Rate every reply on every dial, in whole numbers, in the order the dials are listed.
+
+Answer ONLY with JSON, one line per reply: {"<reply number>": [<first dial>, <second dial>, ...], ...}`;
 
 export const EXAMPLES_SECTION_HEADER =
 	"## Example exchanges\n\nMatch their tone, length and crudeness. Don't copy a line word for word.";

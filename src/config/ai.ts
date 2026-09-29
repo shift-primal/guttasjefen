@@ -5,10 +5,13 @@ export const MODEL = "grok-4.20-non-reasoning";
 
 export const HISTORY_LIMIT = 15;
 export const BEST_OF = 4;
-// Replies starting with the same words as one of the bot's earlier replies are dropped
 export const OPENER_WORDS = 2;
+export const INSULT_TAIL_CHANCE = 0.2;
 export const OWN_REPLIES_SHOWN = 5;
 export const EXAMPLES_PER_REPLY = 5;
+export const DIAL_LIMIT = 2;
+export const DIAL_JITTER = 0.5;
+export const DISTILL_MAX_TOKENS = 2000;
 
 export const UPDATE_PROFILES_EVERY = 15;
 export const PROFILE_UPDATE_MAX_TOKENS = 1500;

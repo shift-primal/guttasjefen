@@ -12,6 +12,7 @@
 		"start": "tsx src/index.ts",
 		"register:commands": "tsx src/register-commands.ts",
 		"test:prompt": "tsx scripts/test-prompt.ts",
+		"distill:taste": "tsx scripts/distill-taste.ts",
 		"deploy:vps": "bash scripts/deploy.sh",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome check src",

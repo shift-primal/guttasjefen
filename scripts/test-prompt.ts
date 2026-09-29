@@ -10,10 +10,13 @@ import {
 	generateCandidatesTogether,
 	pickBest,
 } from "#/ai/reply";
+import { jitterTaste, loadTaste, strongDials, withOverrides } from "#/ai/taste";
 import {
 	BEST_OF,
 	COMMON_WORDS,
 	CONFIG_DIR,
+	DIAL_JITTER,
+	DIAL_LIMIT,
 	OWN_REPLIES_SHOWN,
 	REPLY_OPTIONS,
 } from "#/config/ai";
@@ -35,9 +38,11 @@ const { values, positionals } = parseArgs({
 		"show-prompt": { type: "boolean", default: false },
 		quiet: { type: "boolean", short: "q", default: false },
 		temperature: { type: "string", short: "t" },
+		jitter: { type: "string", short: "j", default: String(DIAL_JITTER) },
 		"best-of": { type: "string", short: "b", default: String(BEST_OF) },
 		verbose: { type: "boolean", short: "v", default: false },
 		separate: { type: "boolean", default: false },
+		dial: { type: "string", short: "d", multiple: true, default: [] },
 	},
 });
 
@@ -70,7 +75,7 @@ function parseScenario(text: string): Line[] {
 async function loadScenario(arg: string | undefined) {
 	if (!arg) {
 		console.error(
-			"Usage: pnpm test-prompt <scenario file | message> [-n 20] [-t temperature] [-b best-of] [--separate] [-v] [--count regex] [--config dir] [--profiles] [--show-prompt] [-q]",
+			"Usage: pnpm test:prompt <scenario file | message> [-n 20] [-t temperature] [-b best-of] [-d dial=value ...] [-j jitter] [--separate] [-v] [--count regex] [--config dir] [--profiles] [--show-prompt] [-q]",
 		);
 		process.exit(1);
 	}
@@ -81,6 +86,28 @@ async function loadScenario(arg: string | undefined) {
 	if (!last || last.bot)
 		throw new Error("The last line must be a person, not the bot");
 	return { lines, last };
+}
+
+async function tasteFor(dials: string[]) {
+	const taste = await loadTaste(values.config);
+	if (!taste) {
+		if (dials.length)
+			throw new Error("No taste.json yet, run pnpm distill:taste first");
+		return null;
+	}
+	const overrides = Object.fromEntries(
+		dials.map((d) => {
+			const [name, value] = d.split("=");
+			if (!name || !value || Number.isNaN(Number(value)))
+				throw new Error(`--dial must look like name=value, got "${d}"`);
+			if (Math.abs(Number(value)) > DIAL_LIMIT)
+				console.warn(
+					`--dial ${name}=${value} is past ±${DIAL_LIMIT}, using ${Math.sign(Number(value)) * DIAL_LIMIT}`,
+				);
+			return [name.trim(), Number(value)];
+		}),
+	);
+	return withOverrides(taste, overrides);
 }
 
 async function profilesFor(lines: Line[]) {
@@ -110,7 +137,6 @@ function isLoop(text: string) {
 
 const { lines, last } = await loadScenario(positionals[0]);
 const runs = Number(values.runs);
-// Scenarios write bot replies they don't care about as "-"
 const own = lines.filter((l) => l.bot && l.text !== "-");
 const shownOwn = new Set(own.slice(-OWN_REPLIES_SHOWN));
 const formatted = lines.map((l) => ({
@@ -118,7 +144,6 @@ const formatted = lines.map((l) => ({
 	line: `[${l.time}] ${l.bot ? "Guttasjefen (deg)" : l.name}: ${l.bot && !shownOwn.has(l) ? AI_MESSAGES.OWN_REPLY_PLACEHOLDER : l.text}`,
 }));
 const transcript = formatted.map(({ line }) => line).join("\n");
-// Same shape as production: the bot's shown replies, and people's lines with names
 const recent = [...shownOwn].map((l) => l.text);
 const others = formatted
 	.filter(({ l }) => !l.bot)
@@ -126,17 +151,19 @@ const others = formatted
 	.join("\n");
 const name = last.name.replace(/\s*\(.*\)$/, "");
 const profiles = await profilesFor(lines);
+const taste = await tasteFor(values.dial);
 
 const bestOf = Number(values["best-of"]);
 const together = !values.separate && bestOf > 1;
 
 if (values["show-prompt"]) {
-	const system = await buildSystem(profiles, values.config);
+	const system = await buildSystem(profiles, taste, values.config);
 	const prompt = buildUserPrompt(
 		transcript,
 		name,
 		last.text,
 		together ? bestOf : 1,
+		taste,
 	);
 	console.log(`=== SYSTEM ===\n${system}\n\n=== USER ===\n${prompt}\n`);
 }
@@ -144,6 +171,14 @@ if (values["show-prompt"]) {
 const temperature = values.temperature
 	? Number(values.temperature)
 	: REPLY_OPTIONS.temperature;
+if (taste)
+	console.log(
+		`Taste: ${Object.entries(taste.dials)
+			.map(([name, { value }]) => `${name}=${value}`)
+			.join(
+				" ",
+			)}${Number(values.jitter) > 0 ? ` (each ±${values.jitter} per run, except ±${DIAL_LIMIT})` : ""}`,
+	);
 console.log(
 	`Running ${runs}× against "${last.text}" with ${values.config}/ at temperature ${temperature}, best of ${bestOf}${together ? " (one call)" : ""}\n`,
 );
@@ -154,12 +189,14 @@ const results = await mapLimit(
 	Array.from({ length: runs }),
 	CONCURRENCY,
 	async () => {
-		const system = await buildSystem(profiles, values.config);
+		const wobbled = jitterTaste(taste, Number(values.jitter));
+		const system = await buildSystem(profiles, wobbled, values.config);
 		const prompt = buildUserPrompt(
 			transcript,
 			name,
 			last.text,
 			together ? bestOf : 1,
+			wobbled,
 		);
 		const started = performance.now();
 		try {
@@ -177,6 +214,7 @@ const results = await mapLimit(
 					past: own.map((l) => l.text),
 					others,
 					people: profiles,
+					strongDials: strongDials(wobbled),
 				},
 			);
 			const { reply, finishReason } = candidates[picked] ?? {
@@ -242,20 +280,27 @@ for (const pattern of values.count) {
 	);
 }
 
-async function pickFavourites() {
+async function rateReplies() {
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
-	const answer = await rl.question(
+	const good = await rl.question(
 		"\nFavourites to add to examples.txt (e.g. 3,7,12, empty to skip): ",
 	);
+	const bad = await rl.question(
+		"Bad ones to add to disliked.txt (empty to skip): ",
+	);
 	rl.close();
+	await saveRated(good, "examples.txt");
+	await saveRated(bad, "disliked.txt");
+}
 
+async function saveRated(answer: string, file: string) {
 	const numbers = new Set(
 		answer
 			.split(/[\s,]+/)
 			.filter(Boolean)
 			.map(Number),
 	);
-	const path = join(values.config, "examples.txt");
+	const path = join(values.config, file);
 	const existing = await readFile(path, "utf8").catch(() => "");
 	const added = ok
 		.filter((r) => numbers.has(r.number) && r.reply)
@@ -268,4 +313,4 @@ async function pickFavourites() {
 	console.log(`Added ${added.length} to ${path}`);
 }
 
-if (process.stdin.isTTY && !values.quiet && ok.length) await pickFavourites();
+if (process.stdin.isTTY && !values.quiet && ok.length) await rateReplies();
