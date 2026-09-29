@@ -1,7 +1,7 @@
 import type { VoiceBasedChannel } from "discord.js";
 import { type GuildQueue, useMainPlayer, useQueue } from "discord-player";
 import { requireVoiceChannel } from "#/commands/guards";
-import { QUEUE_OPTIONS } from "#/music/queue-options";
+import { QUEUE_OPTIONS } from "#/config/music";
 import { skipCurrent } from "#/music/skip";
 import type { Command, CommandContext, QueueMetadata } from "#/types";
 import { formatPlaylist, formatTrack } from "#/ui/format";

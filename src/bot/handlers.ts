@@ -17,12 +17,14 @@ import {
 	CMD_PREFIX,
 	MUSIC_CHANNEL_KEYWORDS,
 	RANDOM_REPLY_CHANCE,
-} from "#/constants";
-import { channelName, elapsed } from "#/log";
+} from "#/config/bot";
+import { CONTROL_ID_PREFIX, QUEUE_ID_PREFIX } from "#/config/music";
+import { channelName } from "#/helpers/discord";
+import { elapsed } from "#/helpers/time";
 import type { Command, CommandContext } from "#/types";
-import { CONTROL_ID_PREFIX, handleControl } from "#/ui/controls";
+import { handleControl } from "#/ui/controls";
 import { formatArgument } from "#/ui/format";
-import { handleQueuePage, QUEUE_ID_PREFIX } from "#/ui/queue";
+import { handleQueuePage } from "#/ui/queue";
 
 const buttonHandlers: [string, (i: ButtonInteraction) => Promise<void>][] = [
 	[CONTROL_ID_PREFIX, handleControl],

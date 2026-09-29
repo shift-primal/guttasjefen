@@ -2,7 +2,7 @@ import {
 	AI_CHANNEL_KEYWORDS,
 	MUSIC_CHANNEL_KEYWORDS,
 	RANDOM_REPLY_CHANNEL_KEYWORDS,
-} from "#/constants";
+} from "#/config/bot";
 
 function matches(name: string, keywords: string[]) {
 	const lower = name.toLowerCase();

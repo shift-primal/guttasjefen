@@ -1,6 +1,6 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import { registerHandlers } from "#/bot/handlers";
-import { env } from "#/env";
+import { env } from "#/config/env";
 import { setupPlayer } from "#/music/setup";
 
 const client = new Client({

@@ -2,9 +2,8 @@ import { copyFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { YoutubeOptions } from "discord-player-youtubei";
-import { env } from "#/env";
-
-const COOKIE_DOMAIN = /(^|\.)(youtube|google)\.com$/;
+import { CONFIG_DIR } from "#/config/ai";
+import { COOKIE_DOMAIN } from "#/config/music";
 
 function cookieHeader(path: string) {
 	const pairs: string[] = [];
@@ -27,10 +26,10 @@ function writableCopy(path: string) {
 }
 
 export function youtubeOptions(): YoutubeOptions {
-	const path = env.YOUTUBE_COOKIES_PATH;
-	const hasCookies = path && existsSync(path);
-	if (path && !hasCookies) {
-		console.warn(`YOUTUBE_COOKIES_PATH set but ${path} does not exist`);
+	const path = join(CONFIG_DIR, "cookies.txt");
+	const hasCookies = existsSync(path);
+	if (!hasCookies) {
+		console.warn(`No ${path}, playing YouTube without cookies`);
 	}
 
 	return {

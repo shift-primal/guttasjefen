@@ -1,5 +1,5 @@
 import { clearProfile } from "#/ai/profiles";
-import { CHAT_RESET_MARKER } from "#/constants";
+import { CHAT_RESET_MARKER } from "#/config/bot";
 import type { Command } from "#/types";
 
 export const reset: Command = {

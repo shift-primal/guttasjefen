@@ -1,8 +1,7 @@
 import { createXai } from "@ai-sdk/xai";
-import { env } from "#/env";
+import { MODEL } from "#/config/ai";
+import { env } from "#/config/env";
 
 const xai = createXai({ apiKey: env.XAI_API_KEY });
 
-export const model = xai("grok-4.20-non-reasoning");
-
-export const REPLY_OPTIONS = { maxOutputTokens: 200, temperature: 1 } as const;
+export const model = xai(MODEL);

@@ -1,15 +1,7 @@
-import { escapeMarkdown } from "discord.js";
 import type { Playlist, Track } from "discord-player";
+import { escapeLabel } from "#/helpers/text";
+import { formatDuration } from "#/helpers/time";
 import type { Command } from "#/types";
-
-function escapeLabel(text: string) {
-	return escapeMarkdown(text).replace(/[[\]]/g, "\\$&");
-}
-
-function formatDuration(duration: string): string | null {
-	const shortened = duration.replace(/^0(?=\d)/, "");
-	return shortened === "0:00" ? null : shortened;
-}
 
 function formatName(track: Track): string {
 	const artist = track.author.replace(/ - Topic$/i, "").trim();

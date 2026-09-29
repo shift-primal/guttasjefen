@@ -1,24 +1,13 @@
 import { type FilePart, generateText, type TextPart } from "ai";
-import { model, REPLY_OPTIONS } from "#/ai/model";
-import { cleanReply } from "#/ai/prompt";
-
-export const BEST_OF = 4;
-
-const JUDGE_SYSTEM = `You pick the best reply for "Guttasjefen", a rude, overconfident regular in a Norwegian Discord group chat of friends. Rudeness is expected and is never a reason to rule a reply out.
-
-First, for each reply, write one line with a verdict:
-- "misread" if it gets the last message wrong: who has what, who wants what, who asked for what, or what happened. Check this literally against the message.
-- "bit" if it reads like a comedy bit or a random non sequitur instead of a real person typing, or if it announces its own mood.
-- "obvious" if it makes sense but is the comeback anyone would say.
-- "good" if it makes sense and is sharper or more surprising, about this message specifically.
-
-Then pick the one a friend in the chat would actually laugh at: a "good" one if there is any, otherwise an "obvious" one. Never pick a "misread".
-
-Answer in exactly this format and nothing else:
-1: <verdict>
-2: <verdict>
-...
-best: <number>`;
+import { model } from "#/ai/model";
+import {
+	BEST_OF,
+	JUDGE_MAX_TOKENS,
+	JUDGE_TEMPERATURE,
+	REPLY_OPTIONS,
+} from "#/config/ai";
+import { JUDGE_SYSTEM } from "#/config/prompts";
+import { cleanReply, reusedWords, sharesOpener } from "#/helpers/text";
 
 export type Candidate = { reply: string; finishReason: string };
 
@@ -42,7 +31,7 @@ export async function generateCandidates(
 	const done = results.filter((r) => r.status === "fulfilled");
 	if (done.length === 0) throw (results[0] as PromiseRejectedResult).reason;
 	return done.map(({ value }) => ({
-		reply: cleanReply(value.text) ?? "",
+		reply: cleanReply(value.text),
 		finishReason: value.finishReason,
 	}));
 }
@@ -66,23 +55,58 @@ export async function generateCandidatesTogether(
 		.map((line) => line.match(/^\s*\d+[.):]\s*(.+)$/)?.[1])
 		.map((line) => (line ? cleanReply(line) : undefined))
 		.filter((reply): reply is string => Boolean(reply));
-	const replies = numbered.length ? numbered : [cleanReply(text) ?? ""];
+	const replies = numbered.length ? numbered : [cleanReply(text)];
 	return replies.map((reply) => ({ reply, finishReason }));
 }
 
+type JudgeContext = {
+	transcript: string;
+	name: string;
+	content: string;
+	recent: string[];
+	others: string;
+	people: string;
+};
+
 export async function pickBest(
 	replies: string[],
-	context: { transcript: string; name: string; content: string },
+	context: JudgeContext & { past: string[] },
 ) {
+	// Drop replies that open like an earlier one, unless that would drop them all
+	const fresh = replies.flatMap((r, i) =>
+		sharesOpener(r, context.past) ? [] : [i],
+	);
+	const pool = fresh.length ? fresh : replies.map((_, i) => i);
+	const picked = await judge(
+		pool.map((i) => replies[i] as string),
+		context,
+	);
+	return pool[picked] ?? 0;
+}
+
+async function judge(replies: string[], context: JudgeContext) {
 	if (replies.length <= 1) return 0;
-	const numbered = replies.map((r, i) => `${i + 1}. ${r}`).join("\n");
+	const reused = replies.map((r) =>
+		reusedWords(r, context.recent, context.others),
+	);
+	// The judge must never pick a tagged reply, so tagging all of them would leave no valid pick
+	const tag = reused.some((words) => words.length === 0);
+	const numbered = replies
+		.map(
+			(r, i) =>
+				`${i + 1}. ${r}${tag && reused[i]?.length ? ` (gjentar: ${reused[i].join(", ")})` : ""}`,
+		)
+		.join("\n");
+	const recent = context.recent.length
+		? `Guttasjefens siste svar:\n${context.recent.map((r) => `- ${r}`).join("\n")}\n\n`
+		: "";
 	try {
 		const { text } = await generateText({
 			model,
-			temperature: 0,
-			maxOutputTokens: 100,
+			temperature: JUDGE_TEMPERATURE,
+			maxOutputTokens: JUDGE_MAX_TOKENS,
 			system: JUDGE_SYSTEM,
-			prompt: `Chatlogg:\n${context.transcript}\n\nSiste melding, fra ${context.name}: ${context.content}\n\nSvar å velge mellom:\n${numbered}`,
+			prompt: `Chatlogg:\n${context.transcript}${context.people}\n\n${recent}Siste melding, fra ${context.name}: ${context.content}\n\nSvar å velge mellom:\n${numbered}`,
 		});
 		const picked = Number(text.match(/best:\s*(\d+)/i)?.[1]);
 		return picked >= 1 && picked <= replies.length ? picked - 1 : 0;

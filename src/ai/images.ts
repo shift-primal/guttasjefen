@@ -1,7 +1,5 @@
 import type { Message } from "discord.js";
-
-const DIRECT_TYPES = new Set(["image/jpeg", "image/png"]);
-const MAX_BYTES = 10 * 1024 * 1024;
+import { DIRECT_IMAGE_TYPES, MAX_IMAGE_BYTES } from "#/config/ai";
 
 function asPng(proxyURL: string) {
 	const url = new URL(proxyURL);
@@ -14,9 +12,10 @@ export function imageUrls(msg: Message): URL[] {
 
 	for (const attachment of msg.attachments.values()) {
 		const type = attachment.contentType?.split(";")[0];
-		if (!type?.startsWith("image/") || attachment.size > MAX_BYTES) continue;
+		if (!type?.startsWith("image/") || attachment.size > MAX_IMAGE_BYTES)
+			continue;
 		urls.push(
-			DIRECT_TYPES.has(type)
+			DIRECT_IMAGE_TYPES.has(type)
 				? new URL(attachment.url)
 				: asPng(attachment.proxyURL),
 		);

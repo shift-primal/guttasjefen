@@ -2,7 +2,7 @@ import { DefaultExtractors, SpotifyExtractor } from "@discord-player/extractor";
 import type { Client } from "discord.js";
 import { Player } from "discord-player";
 import { YoutubeExtractor } from "discord-player-youtubei";
-import { env } from "#/env";
+import { env } from "#/config/env";
 import { registerAnnouncements } from "#/music/announcements";
 import { CustomSpotifyExtractor } from "#/music/extractors/spotify";
 import { youtubeOptions } from "#/music/extractors/youtube";

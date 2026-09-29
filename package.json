@@ -10,8 +10,8 @@
 	},
 	"scripts": {
 		"start": "tsx src/index.ts",
-		"deploy-commands": "tsx src/deploy-commands.ts",
-		"test-prompt": "tsx scripts/test-prompt.ts",
+		"register:commands": "tsx src/register-commands.ts",
+		"test:prompt": "tsx scripts/test-prompt.ts",
 		"deploy:vps": "bash scripts/deploy.sh",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome check src",

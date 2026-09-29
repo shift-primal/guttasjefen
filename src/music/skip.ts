@@ -4,6 +4,7 @@ import {
 	type Track,
 	useMainPlayer,
 } from "discord-player";
+import { SKIP_RESTORE_TIMEOUT_MS } from "#/config/music";
 
 export function skipCurrent(queue: GuildQueue): boolean {
 	return advance(queue, () => queue.node.skip());
@@ -27,7 +28,7 @@ function advance(queue: GuildQueue, action: () => boolean): boolean {
 	const onFinish = (finished: GuildQueue) => {
 		if (finished.guild.id === queue.guild.id) setImmediate(restore);
 	};
-	const fallback = setTimeout(restore, 3000);
+	const fallback = setTimeout(restore, SKIP_RESTORE_TIMEOUT_MS);
 
 	queue.setRepeatMode(QueueRepeatMode.OFF);
 	events.on("playerFinish", onFinish);

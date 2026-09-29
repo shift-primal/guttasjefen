@@ -1,7 +1,7 @@
 import { type APIGuild, REST, Routes } from "discord.js";
 import { toSlashJSON } from "#/bot/slash";
 import { commands } from "#/commands";
-import { deployEnv } from "#/env";
+import { deployEnv } from "#/config/env";
 
 const { DISCORD_TOKEN, CLIENT_ID } = deployEnv();
 

@@ -5,7 +5,7 @@ import {
 	CMD_PREFIX,
 	MUSIC_CHANNEL_KEYWORDS,
 	RANDOM_REPLY_CHANNEL_KEYWORDS,
-} from "#/constants";
+} from "#/config/bot";
 import type { Command } from "#/types";
 import { formatArgument } from "#/ui/format";
 

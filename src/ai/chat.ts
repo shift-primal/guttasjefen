@@ -6,58 +6,39 @@ import {
 	describeProfiles,
 	loadProfiles,
 	maybeUpdateProfiles,
+	type Person,
 } from "#/ai/profiles";
+import { buildSystem, buildUserPrompt } from "#/ai/prompt";
+import { generateCandidatesTogether, pickBest } from "#/ai/reply";
 import {
-	buildSystem,
-	buildUserPrompt,
-	OWN_REPLY_PLACEHOLDER,
-} from "#/ai/prompt";
-import { BEST_OF, generateCandidatesTogether, pickBest } from "#/ai/reply";
-import { CHAT_RESET_MARKER } from "#/constants";
-import { elapsed, preview } from "#/log";
-
-const HISTORY_LIMIT = 15;
-const FALLBACK_REPLY = "og?";
-const MAX_IMAGES = 4;
-
-function authorName(msg: Message, botId: string) {
-	if (msg.author.id === botId) return "Guttasjefen (deg)";
-	return msg.member?.displayName ?? msg.author.displayName;
-}
-
-function cleanContent(msg: Message, botId: string) {
-	return msg.content.replaceAll(`<@${botId}>`, "").replaceAll("\n", " ").trim();
-}
-
-function describeContent(msg: Message, botId: string) {
-	const count = imageUrls(msg).length;
-	const marker =
-		count === 0 ? "" : count === 1 ? "[bilde]" : `[${count} bilder]`;
-	return [cleanContent(msg, botId), marker].filter(Boolean).join(" ");
-}
-
-function formatLine(msg: Message, botId: string) {
-	const time = msg.createdAt.toLocaleTimeString("nb-NO", {
-		hour: "2-digit",
-		minute: "2-digit",
-		timeZone: "Europe/Oslo",
-	});
-	const target = msg.mentions.repliedUser;
-	const replyTo = target
-		? ` (svarer ${target.id === botId ? "deg" : target.displayName})`
-		: "";
-	const content =
-		msg.author.id === botId
-			? OWN_REPLY_PLACEHOLDER
-			: describeContent(msg, botId);
-	return `[${time}] ${authorName(msg, botId)}${replyTo}: ${content}`;
-}
+	BEST_OF,
+	HISTORY_LIMIT,
+	MAX_IMAGES,
+	OWN_REPLIES_SHOWN,
+} from "#/config/ai";
+import { CHAT_RESET_MARKER, CMD_PREFIX } from "#/config/bot";
+import { AI_MESSAGES, IMAGE_PROMPT_LABELS } from "#/config/prompts";
+import {
+	authorName,
+	describeMessageContent,
+	formatTranscriptLine,
+	preview,
+} from "#/helpers/discord";
+import { elapsed } from "#/helpers/time";
 
 export async function replyWithAI(message: Message<true>) {
 	const botId = message.client.user.id;
 	const start = performance.now();
+	const author = authorName(message, botId);
+	const messageImageCount = imageUrls(message).length;
+	const contentDescription = describeMessageContent(
+		message,
+		botId,
+		messageImageCount,
+	);
+
 	console.log(
-		`[ai] ${authorName(message, botId)} in #${message.channel.name}: ${preview(describeContent(message, botId))}`,
+		`[ai] ${author} in #${message.channel.name}: ${preview(contentDescription)}`,
 	);
 	await message.channel.sendTyping();
 
@@ -71,36 +52,64 @@ export async function replyWithAI(message: Message<true>) {
 	);
 	const log = (reset === -1 ? all : all.slice(0, reset))
 		.reverse()
-		.filter((m) => m.content || imageUrls(m).length > 0);
+		.map((m) => ({ m, imageCount: imageUrls(m).length }))
+		.filter(({ m, imageCount }) => m.content || imageCount > 0);
 
-	const transcript = [...log, message]
-		.map((m) => formatLine(m, botId))
-		.join("\n");
+	// Only the bot's chat replies count as its own; music and command output doesn't
+	const commandIds = new Set(
+		log
+			.filter(({ m }) => m.content.startsWith(CMD_PREFIX))
+			.map(({ m }) => m.id),
+	);
+	const own = log
+		.map(({ m }) => m)
+		.filter(
+			(m) =>
+				m.author.id === botId &&
+				m.reference?.messageId &&
+				!m.interactionMetadata &&
+				!commandIds.has(m.reference.messageId),
+		);
+	const shownOwn = new Set([
+		...own.slice(-OWN_REPLIES_SHOWN),
+		...own.filter((m) => m.id === message.reference?.messageId),
+	]);
 
-	const people = new Map<string, string>();
-	for (const m of [...log, message]) {
-		if (m.author.id !== botId && !m.author.bot)
-			people.set(m.author.id, authorName(m, botId));
+	const lines = [...log, { m: message, imageCount: messageImageCount }].map(
+		({ m, imageCount }) => ({
+			m,
+			line: formatTranscriptLine(m, botId, {
+				hidden: m.author.id === botId && !shownOwn.has(m),
+				imageCount,
+			}),
+		}),
+	);
+	const transcript = lines.map(({ line }) => line).join("\n");
+	const fromPeople = lines.filter(({ m }) => m.author.id !== botId);
+	const peopleTranscript = fromPeople.map(({ line }) => line).join("\n");
+
+	const people = new Map<string, Person>();
+	for (const { m } of fromPeople) {
+		if (!m.author.bot) {
+			people.set(m.author.id, {
+				name: authorName(m, botId),
+				username: m.author.username,
+			});
+		}
 	}
 
-	const name = authorName(message, botId);
-
-	const profiles = describeProfiles(
-		await loadProfiles(),
-		new Set(people.keys()),
-	);
-	const system = await buildSystem(profiles, message.channelId);
+	const profiles = describeProfiles(await loadProfiles(), people);
+	const system = await buildSystem(profiles);
 	const prompt = buildUserPrompt(
 		transcript,
-		name,
-		describeContent(message, botId),
-		system.mood,
+		author,
+		contentDescription,
 		BEST_OF,
 	);
-	const images = await imageParts(message, name);
+	const images = await imageParts(message, author);
 
 	const generate = (content: (TextPart | FilePart)[]) =>
-		generateCandidatesTogether(system.text, content);
+		generateCandidatesTogether(system, content);
 
 	const textPart: TextPart = { type: "text", text: prompt };
 	const generateStart = performance.now();
@@ -123,36 +132,36 @@ export async function replyWithAI(message: Message<true>) {
 		usable.length === 0 &&
 		candidates.some((c) => c.finishReason === "content-filter")
 	) {
-		await message.reply("Nah, can't help with that one.");
+		await message.reply(AI_MESSAGES.CONTENT_FILTER_REPLY);
 		return;
 	}
 
 	const picked = await pickBest(usable, {
 		transcript,
-		name,
-		content: describeContent(message, botId),
+		name: author,
+		content: contentDescription,
+		recent: [...shownOwn].map((m) => m.content),
+		past: own.map((m) => m.content),
+		others: peopleTranscript,
+		people: profiles,
 	});
 	const generateTime = elapsed(generateStart);
-	const reply = usable[picked] || FALLBACK_REPLY;
+	const reply = usable[picked] || AI_MESSAGES.FALLBACK_REPLY;
 
 	await message.reply({
 		content: reply.slice(0, 2000),
 		allowedMentions: { parse: [] },
 	});
 	console.log(
-		`[ai] replied in ${elapsed(start)} (xai ${generateTime}, picked ${picked + 1}/${usable.length}${imageCount ? `, ${imageCount} images` : ""}${system.moodName ? `, ${system.moodName}` : ""}): ${preview(reply)}`,
+		`[ai] replied in ${elapsed(start)} (xai ${generateTime}, picked ${picked + 1}/${usable.length}${imageCount ? `, ${imageCount} images` : ""}): ${preview(reply)}`,
 	);
 
-	const peopleTranscript = [...log, message]
-		.filter((m) => m.author.id !== botId)
-		.map((m) => formatLine(m, botId))
-		.join("\n");
 	void maybeUpdateProfiles(model, message.channelId, peopleTranscript, people);
 }
 
 async function imageParts(message: Message<true>, name: string) {
 	const groups: [string, URL[]][] = [
-		[`Bilder fra meldingen til ${name}:`, imageUrls(message)],
+		[IMAGE_PROMPT_LABELS.direct(name), imageUrls(message)],
 	];
 
 	if (message.reference?.messageId) {
@@ -160,7 +169,7 @@ async function imageParts(message: Message<true>, name: string) {
 		if (replied) {
 			const author = authorName(replied, message.client.user.id);
 			groups.push([
-				`Bilder fra meldingen ${name} svarer på (sendt av ${author}):`,
+				IMAGE_PROMPT_LABELS.replied(name, author),
 				imageUrls(replied),
 			]);
 		}

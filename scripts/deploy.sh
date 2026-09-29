@@ -3,8 +3,19 @@ set -euo pipefail
 
 HOST="${DEPLOY_HOST:-vps}"
 DIR="${DEPLOY_DIR:-/root/guttasjefen}"
-DEPLOY_COMMANDS=false
-[[ "${1:-}" == "--commands" ]] && DEPLOY_COMMANDS=true
+REGISTER_COMMANDS=false
+SYNC_COOKIES=false
+for arg in "$@"; do
+	case "$arg" in
+	--commands) REGISTER_COMMANDS=true ;;
+	# The server's cookies are its own; only overwrite them with the local copy when asked
+	--cookies) SYNC_COOKIES=true ;;
+	*)
+		echo "usage: $0 [--commands] [--cookies]" >&2
+		exit 1
+		;;
+	esac
+done
 
 cd "$(dirname "$0")/.."
 
@@ -21,15 +32,17 @@ rsync -az --delete \
 	--exclude docs \
 	--exclude '.env' \
 	--exclude '.env.*' \
-	--exclude cookies.txt \
 	--exclude /config \
+	--exclude /cookies.txt \
 	--exclude data \
 	./ "$HOST:$DIR/"
 
 echo "==> Syncing config"
 config_files=()
 while IFS= read -r -d '' file; do
-	if grep -q '[^[:space:]]' "$file"; then
+	if [[ "$file" == config/cookies.txt && "$SYNC_COOKIES" != true ]]; then
+		echo "skipping $file, pass --cookies to overwrite the server's copy"
+	elif grep -q '[^[:space:]]' "$file"; then
 		config_files+=("${file#config/}")
 	else
 		echo "skipping empty $file, keeping the server's copy"
@@ -42,7 +55,7 @@ if ((${#config_files[@]})); then
 fi
 
 echo "==> Building and restarting on $HOST"
-ssh "$HOST" DIR="$DIR" DEPLOY_COMMANDS="$DEPLOY_COMMANDS" bash -s <<'REMOTE'
+ssh "$HOST" DIR="$DIR" REGISTER_COMMANDS="$REGISTER_COMMANDS" bash -s <<'REMOTE'
 set -euo pipefail
 cd "$DIR"
 
@@ -58,16 +71,20 @@ if [[ -n "$missing" ]]; then
 	echo "warning: server .env is missing keys from .env.example:" $missing
 fi
 
-# Docker creates a directory if a bind-mounted file doesn't exist, which breaks the cookie loader
-if [[ ! -f cookies.txt ]]; then
-	echo "warning: no cookies.txt on the server, creating an empty one"
-	touch cookies.txt
+# Cookies used to live in the project root; move them into config/ once
+if [[ -f cookies.txt && ! -f config/cookies.txt ]]; then
+	echo "moving cookies.txt into config/"
+	mkdir -p config
+	mv cookies.txt config/cookies.txt
+fi
+if [[ ! -f config/cookies.txt ]]; then
+	echo "warning: no config/cookies.txt on the server, YouTube will play without cookies"
 fi
 
 docker compose up -d --build --remove-orphans
 
-if [[ "$DEPLOY_COMMANDS" == true ]]; then
-	docker compose run --rm bot pnpm deploy-commands
+if [[ "$REGISTER_COMMANDS" == true ]]; then
+	docker compose run --rm bot pnpm register:commands
 fi
 
 docker image prune -f >/dev/null

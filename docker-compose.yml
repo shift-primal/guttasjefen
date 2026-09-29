@@ -4,11 +4,8 @@ services:
     container_name: guttasjefen
     restart: unless-stopped
     env_file: .env
-    environment:
-      YOUTUBE_COOKIES_PATH: /app/cookies.txt
     volumes:
-      - ./cookies.txt:/app/cookies.txt:ro
-      # Mounted as a folder so edits show up even when an editor replaces the file
+      # Mounted as a folder (cookies.txt included) so edits show up even when a file is replaced
       - ./config:/app/config:ro
       # Profiles the bot keeps on each user, written at runtime
       - ./data:/app/data

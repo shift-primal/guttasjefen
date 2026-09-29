@@ -1,9 +1,7 @@
 import { SpotifyExtractor } from "@discord-player/extractor";
 import type { SearchQueryType } from "discord-player";
-import { env } from "#/env";
-
-const TOKEN_URL = "https://accounts.spotify.com/api/token";
-const SPOTIFY_LINK = /^(https?:\/\/open\.spotify\.com\/|spotify:)/;
+import { env } from "#/config/env";
+import { SPOTIFY_LINK, TOKEN_URL } from "#/config/music";
 
 export class CustomSpotifyExtractor extends SpotifyExtractor {
 	override async validate(query: string, type?: SearchQueryType | null) {

@@ -3,28 +3,27 @@ import { appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
-import { REPLY_OPTIONS } from "#/ai/model";
-import { describeProfiles, loadProfiles } from "#/ai/profiles";
+import { describeProfiles, loadProfiles, type Person } from "#/ai/profiles";
+import { buildSystem, buildUserPrompt } from "#/ai/prompt";
 import {
-	buildSystem,
-	buildUserPrompt,
-	CONFIG_DIR,
-	OWN_REPLY_PLACEHOLDER,
-} from "#/ai/prompt";
-import {
-	BEST_OF,
 	generateCandidates,
 	generateCandidatesTogether,
 	pickBest,
 } from "#/ai/reply";
+import {
+	BEST_OF,
+	COMMON_WORDS,
+	CONFIG_DIR,
+	OWN_REPLIES_SHOWN,
+	REPLY_OPTIONS,
+} from "#/config/ai";
+import { AI_MESSAGES } from "#/config/prompts";
+import { mapLimit } from "#/helpers/async";
+import { words } from "#/helpers/text";
+import { formatTime } from "#/helpers/time";
 
 const CONCURRENCY = 6;
 const BOT_NAME = /^(bot|guttasjefen)$/i;
-const COMMON_WORDS = new Set(
-	"ikke bare også eller skal være sånn fordi etter over under dette hvis blir litt helt aldri alltid noen hele mens siden uten ditt mitt dine mine deres hvor hvem hvorfor hvordan kanskje fortsatt allerede faktisk igjen enda både skulle kunne ville have hadde sier gjør gjøre".split(
-		" ",
-	),
-);
 
 const { values, positionals } = parseArgs({
 	allowPositionals: true,
@@ -45,11 +44,7 @@ const { values, positionals } = parseArgs({
 type Line = { time: string; name: string; text: string; bot: boolean };
 
 function now() {
-	return new Date().toLocaleTimeString("nb-NO", {
-		hour: "2-digit",
-		minute: "2-digit",
-		timeZone: "Europe/Oslo",
-	});
+	return formatTime(new Date());
 }
 
 function parseScenario(text: string): Line[] {
@@ -89,22 +84,23 @@ async function loadScenario(arg: string | undefined) {
 }
 
 async function profilesFor(lines: Line[]) {
-	if (!values.profiles) return "";
-	const names = new Set(lines.map((l) => l.name.replace(/\s*\(.*\)$/, "")));
-	const all = await loadProfiles();
-	const ids = Object.entries(all)
-		.filter(([, p]) => names.has(p.name))
-		.map(([id]) => id);
-	return describeProfiles(all, new Set(ids));
+	const all = values.profiles ? await loadProfiles() : {};
+	const people = new Map<string, Person>();
+	for (const line of lines.filter((l) => !l.bot)) {
+		const name = line.name.replace(/\s*\(.*\)$/, "");
+		const id = Object.entries(all).find(([, p]) => p.name === name)?.[0];
+		people.set(id ?? name, { name });
+	}
+	return describeProfiles(all, people);
 }
 
 function isLoop(text: string) {
-	const words = text.split(/\s+/);
-	for (let size = 2; size * 2 <= words.length; size++) {
-		for (let i = 0; i + size * 2 <= words.length; i++) {
+	const w = text.split(/\s+/);
+	for (let size = 2; size * 2 <= w.length; size++) {
+		for (let i = 0; i + size * 2 <= w.length; i++) {
 			if (
-				words.slice(i, i + size).join(" ") ===
-				words.slice(i + size, i + size * 2).join(" ")
+				w.slice(i, i + size).join(" ") ===
+				w.slice(i + size, i + size * 2).join(" ")
 			)
 				return true;
 		}
@@ -112,34 +108,21 @@ function isLoop(text: string) {
 	return false;
 }
 
-function words(text: string) {
-	return new Set(text.toLowerCase().match(/[\p{L}\d]+/gu) ?? []);
-}
-
-async function mapLimit<T, R>(
-	items: T[],
-	limit: number,
-	fn: (item: T) => Promise<R>,
-) {
-	const results: R[] = [];
-	let next = 0;
-	const worker = async () => {
-		while (next < items.length) {
-			const index = next++;
-			results[index] = await fn(items[index] as T);
-		}
-	};
-	await Promise.all(Array.from({ length: limit }, worker));
-	return results;
-}
-
 const { lines, last } = await loadScenario(positionals[0]);
 const runs = Number(values.runs);
-const transcript = lines
-	.map(
-		(l) =>
-			`[${l.time}] ${l.bot ? "Guttasjefen (deg)" : l.name}: ${l.bot ? OWN_REPLY_PLACEHOLDER : l.text}`,
-	)
+// Scenarios write bot replies they don't care about as "-"
+const own = lines.filter((l) => l.bot && l.text !== "-");
+const shownOwn = new Set(own.slice(-OWN_REPLIES_SHOWN));
+const formatted = lines.map((l) => ({
+	l,
+	line: `[${l.time}] ${l.bot ? "Guttasjefen (deg)" : l.name}: ${l.bot && !shownOwn.has(l) ? AI_MESSAGES.OWN_REPLY_PLACEHOLDER : l.text}`,
+}));
+const transcript = formatted.map(({ line }) => line).join("\n");
+// Same shape as production: the bot's shown replies, and people's lines with names
+const recent = [...shownOwn].map((l) => l.text);
+const others = formatted
+	.filter(({ l }) => !l.bot)
+	.map(({ line }) => line)
 	.join("\n");
 const name = last.name.replace(/\s*\(.*\)$/, "");
 const profiles = await profilesFor(lines);
@@ -148,15 +131,14 @@ const bestOf = Number(values["best-of"]);
 const together = !values.separate && bestOf > 1;
 
 if (values["show-prompt"]) {
-	const system = await buildSystem(profiles, "show-prompt", values.config);
+	const system = await buildSystem(profiles, values.config);
 	const prompt = buildUserPrompt(
 		transcript,
 		name,
 		last.text,
-		system.mood,
 		together ? bestOf : 1,
 	);
-	console.log(`=== SYSTEM ===\n${system.text}\n\n=== USER ===\n${prompt}\n`);
+	console.log(`=== SYSTEM ===\n${system}\n\n=== USER ===\n${prompt}\n`);
 }
 
 const temperature = values.temperature
@@ -169,26 +151,33 @@ console.log(
 let printed = 0;
 
 const results = await mapLimit(
-	Array.from({ length: runs }, (_, i) => i),
+	Array.from({ length: runs }),
 	CONCURRENCY,
-	async (run) => {
-		const system = await buildSystem(profiles, `run-${run}`, values.config);
+	async () => {
+		const system = await buildSystem(profiles, values.config);
 		const prompt = buildUserPrompt(
 			transcript,
 			name,
 			last.text,
-			system.mood,
 			together ? bestOf : 1,
 		);
 		const started = performance.now();
 		try {
 			const content = [{ type: "text" as const, text: prompt }];
 			const candidates = together
-				? await generateCandidatesTogether(system.text, content, temperature)
-				: await generateCandidates(system.text, content, bestOf, temperature);
+				? await generateCandidatesTogether(system, content, temperature)
+				: await generateCandidates(system, content, bestOf, temperature);
 			const picked = await pickBest(
 				candidates.map((c) => c.reply),
-				{ transcript, name, content: last.text },
+				{
+					transcript,
+					name,
+					content: last.text,
+					recent,
+					past: own.map((l) => l.text),
+					others,
+					people: profiles,
+				},
 			);
 			const { reply, finishReason } = candidates[picked] ?? {
 				reply: "",
@@ -196,12 +185,10 @@ const results = await mapLimit(
 			};
 			const number = ++printed;
 			if (!values.quiet) {
-				console.log(
-					`${String(number).padStart(4)}  ${`[${system.moodName ?? "-"}]`.padEnd(14)} ${reply}`,
-				);
+				console.log(`${String(number).padStart(4)}  ${reply}`);
 				if (values.verbose)
 					for (const [i, c] of candidates.entries())
-						if (i !== picked) console.log(`${" ".repeat(21)}✗ ${c.reply}`);
+						if (i !== picked) console.log(`${" ".repeat(6)}✗ ${c.reply}`);
 			}
 			return {
 				reply,

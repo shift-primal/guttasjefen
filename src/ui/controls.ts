@@ -6,11 +6,10 @@ import {
 	MessageFlags,
 } from "discord.js";
 import { QueueRepeatMode } from "discord-player";
+import { CONTROL_ID_PREFIX } from "#/config/music";
 import { checkQueueAccess } from "#/music/access";
 import { nextRepeatMode, repeatModeInfo } from "#/music/repeat-mode";
 import { skipCurrent } from "#/music/skip";
-
-export const CONTROL_ID_PREFIX = "ctl:";
 
 const ACTIONS = ["toggle", "skip", "stop", "shuffle", "loop"] as const;
 

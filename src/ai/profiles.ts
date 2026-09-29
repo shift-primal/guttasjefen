@@ -1,11 +1,18 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { generateText, type LanguageModel } from "ai";
-
-const PROFILES_PATH = "data/profiles.json";
-const UPDATE_EVERY = 15;
+import {
+	PROFILE_UPDATE_MAX_TOKENS,
+	PROFILES_PATH,
+	UPDATE_PROFILES_EVERY,
+} from "#/config/ai";
+import {
+	PROFILE_UPDATE_SYSTEM,
+	PROFILES_SECTION_HEADER,
+} from "#/config/prompts";
 
 export type Profile = { name: string; notes: string };
+export type Person = { name: string; username?: string };
 type Profiles = Record<string, Profile>;
 
 const repliesSinceUpdate = new Map<string, number>();
@@ -32,23 +39,32 @@ export async function clearProfile(userId: string) {
 	return true;
 }
 
-export function describeProfiles(profiles: Profiles, userIds: Set<string>) {
-	const lines = [...userIds]
-		.map((id) => profiles[id])
-		.filter((p): p is Profile => Boolean(p?.notes))
-		.map((p) => `- ${p.name}: ${p.notes}`);
-	return lines.length ? `\n\n## Folk du kjenner\n${lines.join("\n")}` : "";
+export function describeProfiles(
+	profiles: Profiles,
+	people: Map<string, Person>,
+) {
+	const lines = [...people].map(([id, { name, username }]) => {
+		const tag =
+			username && username.toLowerCase() !== name.toLowerCase()
+				? ` (brukernavn ${username})`
+				: "";
+		const notes = profiles[id]?.notes;
+		return `- ${name}${tag}${notes ? `: ${notes}` : ""}`;
+	});
+	return lines.length
+		? `\n\n${PROFILES_SECTION_HEADER}\n${lines.join("\n")}`
+		: "";
 }
 
 export async function maybeUpdateProfiles(
 	model: LanguageModel,
 	channelId: string,
 	transcript: string,
-	people: Map<string, string>,
+	people: Map<string, Person>,
 ) {
 	const count = (repliesSinceUpdate.get(channelId) ?? 0) + 1;
 	repliesSinceUpdate.set(channelId, count);
-	if (count < UPDATE_EVERY || updating || people.size === 0) return;
+	if (count < UPDATE_PROFILES_EVERY || updating || people.size === 0) return;
 	repliesSinceUpdate.set(channelId, 0);
 	updating = true;
 
@@ -56,23 +72,22 @@ export async function maybeUpdateProfiles(
 		const profiles = await loadProfiles();
 		const current = [...people]
 			.map(
-				([id, name]) =>
+				([id, { name }]) =>
 					`${id} (${name}): ${profiles[id]?.notes ?? "(ingen notater ennå)"}`,
 			)
 			.join("\n");
 
 		const { text } = await generateText({
 			model,
-			maxOutputTokens: 1500,
-			system:
-				'Du holder korte notater om folk i en Discord-chat, så en roast-bot kan kjenne dem igjen. Skriv på norsk. Notér ting som er spesifikke for hver person: hva de snakker om, vaner, meninger, ting de har sagt eller gjort, hvordan de skriver. Maks 30 ord per person. Behold gamle notater som fortsatt stemmer. Svar KUN med JSON: {"<bruker-id>": "notater"}.',
+			maxOutputTokens: PROFILE_UPDATE_MAX_TOKENS,
+			system: PROFILE_UPDATE_SYSTEM,
 			prompt: `Nåværende notater:\n${current}\n\nNy chatlogg:\n${transcript}`,
 		});
 
 		const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
 		const updates: Record<string, unknown> = JSON.parse(json);
 		const latest = await loadProfiles();
-		for (const [id, name] of people) {
+		for (const [id, { name }] of people) {
 			const notes = updates[id];
 			if (typeof notes === "string" && notes.trim()) {
 				latest[id] = { name, notes: notes.trim() };

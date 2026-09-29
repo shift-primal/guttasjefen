@@ -5,10 +5,8 @@ import {
 	ButtonStyle,
 } from "discord.js";
 import { type GuildQueue, useQueue } from "discord-player";
+import { PAGE_SIZE, QUEUE_ID_PREFIX } from "#/config/music";
 import { formatNowPlaying, formatTrack } from "#/ui/format";
-
-const PAGE_SIZE = 10;
-export const QUEUE_ID_PREFIX = "queue:";
 
 export function renderQueue(queue: GuildQueue, requestedPage = 1) {
 	const upcoming = queue.tracks.toArray();
