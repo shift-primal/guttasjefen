@@ -7,10 +7,3 @@ export async function readOptional(path: string): Promise<string> {
 		return "";
 	}
 }
-
-export function poolEntries(text: string): string[] {
-	return text
-		.split("\n")
-		.map((line) => line.trim())
-		.filter((line) => line && !line.startsWith("#"));
-}

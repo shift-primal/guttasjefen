@@ -3,27 +3,36 @@ import { appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
-import { describeProfiles, loadProfiles, type Person } from "#/ai/profiles";
-import { buildSystem, buildUserPrompt } from "#/ai/prompt";
-import {
-	generateCandidates,
-	generateCandidatesTogether,
-	pickBest,
-} from "#/ai/reply";
-import { jitterTaste, loadTaste, strongDials, withOverrides } from "#/ai/taste";
+import { CONFIG_DIR } from "#/config/bot";
+import { mapLimit } from "#/helpers/async";
+import { formatTime } from "#/helpers/time";
 import {
 	BEST_OF,
 	COMMON_WORDS,
-	CONFIG_DIR,
 	DIAL_JITTER,
 	DIAL_LIMIT,
 	OWN_REPLIES_SHOWN,
 	REPLY_OPTIONS,
-} from "#/config/ai";
-import { AI_MESSAGES } from "#/config/prompts";
-import { mapLimit } from "#/helpers/async";
-import { words } from "#/helpers/text";
-import { formatTime } from "#/helpers/time";
+} from "#/personality/config";
+import { words } from "#/personality/filters";
+import {
+	describeProfiles,
+	loadProfiles,
+	type Person,
+} from "#/personality/profiles";
+import { buildSystem, buildUserPrompt } from "#/personality/prompt";
+import { AI_MESSAGES } from "#/personality/prompts";
+import {
+	generateCandidates,
+	generateCandidatesTogether,
+	pickBest,
+} from "#/personality/reply";
+import {
+	jitterTaste,
+	loadTaste,
+	strongDials,
+	withOverrides,
+} from "#/personality/taste";
 
 const CONCURRENCY = 6;
 const BOT_NAME = /^(bot|guttasjefen)$/i;
@@ -43,6 +52,8 @@ const { values, positionals } = parseArgs({
 		verbose: { type: "boolean", short: "v", default: false },
 		separate: { type: "boolean", default: false },
 		dial: { type: "string", short: "d", multiple: true, default: [] },
+		// on/off overrides "enabled" in taste.json for this run
+		taste: { type: "string" },
 	},
 });
 
@@ -75,7 +86,7 @@ function parseScenario(text: string): Line[] {
 async function loadScenario(arg: string | undefined) {
 	if (!arg) {
 		console.error(
-			"Usage: pnpm test:prompt <scenario file | message> [-n 20] [-t temperature] [-b best-of] [-d dial=value ...] [-j jitter] [--separate] [-v] [--count regex] [--config dir] [--profiles] [--show-prompt] [-q]",
+			"Usage: pnpm test:prompt <scenario file | message> [-n 20] [-t temperature] [-b best-of] [-d dial=value ...] [--taste on|off] [-j jitter] [--separate] [-v] [--count regex] [--config dir] [--profiles] [--show-prompt] [-q]",
 		);
 		process.exit(1);
 	}
@@ -88,11 +99,20 @@ async function loadScenario(arg: string | undefined) {
 	return { lines, last };
 }
 
-async function tasteFor(dials: string[]) {
+async function tasteFor(dials: string[], mode: string | undefined) {
+	if (mode !== undefined && mode !== "on" && mode !== "off")
+		throw new Error(`--taste must be on or off, got "${mode}"`);
 	const taste = await loadTaste(values.config);
 	if (!taste) {
-		if (dials.length)
+		if (dials.length || mode === "on")
 			throw new Error("No taste.json yet, run pnpm distill:taste first");
+		return null;
+	}
+	if (mode === "off" || (mode === undefined && !taste.enabled)) {
+		if (dials.length)
+			throw new Error(
+				"The dial system is off (taste.json or --taste off), so --dial does nothing. Add --taste on",
+			);
 		return null;
 	}
 	const overrides = Object.fromEntries(
@@ -151,7 +171,7 @@ const others = formatted
 	.join("\n");
 const name = last.name.replace(/\s*\(.*\)$/, "");
 const profiles = await profilesFor(lines);
-const taste = await tasteFor(values.dial);
+const taste = await tasteFor(values.dial, values.taste);
 
 const bestOf = Number(values["best-of"]);
 const together = !values.separate && bestOf > 1;
@@ -171,14 +191,15 @@ if (values["show-prompt"]) {
 const temperature = values.temperature
 	? Number(values.temperature)
 	: REPLY_OPTIONS.temperature;
-if (taste)
-	console.log(
-		`Taste: ${Object.entries(taste.dials)
-			.map(([name, { value }]) => `${name}=${value}`)
-			.join(
-				" ",
-			)}${Number(values.jitter) > 0 ? ` (each ±${values.jitter} per run, except ±${DIAL_LIMIT})` : ""}`,
-	);
+console.log(
+	taste
+		? `Taste: ${Object.entries(taste.dials)
+				.map(([name, { value }]) => `${name}=${value}`)
+				.join(
+					" ",
+				)}${Number(values.jitter) > 0 ? ` (each ±${values.jitter} per run, except ±${DIAL_LIMIT})` : ""}`
+		: "Taste: off (random examples, no dials)",
+);
 console.log(
 	`Running ${runs}× against "${last.text}" with ${values.config}/ at temperature ${temperature}, best of ${bestOf}${together ? " (one call)" : ""}\n`,
 );

@@ -1,7 +1,17 @@
-export const CONFIG_DIR = "config";
-export const PROFILES_PATH = "data/profiles.json";
+import { createXai } from "@ai-sdk/xai";
+import { env } from "#/config/env";
 
-export const MODEL = "grok-4.20-non-reasoning";
+export const PROFILES_PATH = "data/profiles.json";
+export const DIAL_OVERRIDES_PATH = "data/dials.json";
+
+export const model = createXai({ apiKey: env.XAI_API_KEY })(
+	"grok-4.20-non-reasoning",
+);
+
+// Where it talks: every message in AI channels, now and then in random-reply channels
+export const AI_CHANNEL_KEYWORDS = ["bot"];
+export const RANDOM_REPLY_CHANNEL_KEYWORDS = ["general"];
+export const RANDOM_REPLY_CHANCE = env.RANDOM_REPLY_CHANCE ?? 0.075;
 
 export const HISTORY_LIMIT = 15;
 export const BEST_OF = 4;
@@ -11,12 +21,16 @@ export const OWN_REPLIES_SHOWN = 5;
 export const EXAMPLES_PER_REPLY = 5;
 export const DIAL_LIMIT = 2;
 export const DIAL_JITTER = 0.5;
+export const DIAL_STEP = 0.5;
+export const DIALS_ID_PREFIX = "dials:";
+// Only members with this role can see or change the dials
+export const DIALS_ROLE = "dev";
 export const DISTILL_MAX_TOKENS = 2000;
 
 export const UPDATE_PROFILES_EVERY = 15;
 export const PROFILE_UPDATE_MAX_TOKENS = 1500;
 
-export const JUDGE_MAX_TOKENS = 100;
+export const JUDGE_MAX_TOKENS = 300;
 export const JUDGE_TEMPERATURE = 0;
 
 export const MAX_IMAGES = 4;

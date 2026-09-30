@@ -1,15 +1,17 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { generateText, type LanguageModel } from "ai";
+import { generateText } from "ai";
+import { parseJsonObject } from "#/helpers/text";
 import {
+	model,
 	PROFILE_UPDATE_MAX_TOKENS,
 	PROFILES_PATH,
 	UPDATE_PROFILES_EVERY,
-} from "#/config/ai";
+} from "#/personality/config";
 import {
 	PROFILE_UPDATE_SYSTEM,
 	PROFILES_SECTION_HEADER,
-} from "#/config/prompts";
+} from "#/personality/prompts";
 
 export type Profile = { name: string; notes: string };
 export type Person = { name: string; username?: string };
@@ -57,7 +59,6 @@ export function describeProfiles(
 }
 
 export async function maybeUpdateProfiles(
-	model: LanguageModel,
 	channelId: string,
 	transcript: string,
 	people: Map<string, Person>,
@@ -84,8 +85,7 @@ export async function maybeUpdateProfiles(
 			prompt: `Nåværende notater:\n${current}\n\nNy chatlogg:\n${transcript}`,
 		});
 
-		const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
-		const updates: Record<string, unknown> = JSON.parse(json);
+		const updates = parseJsonObject(text) as Record<string, unknown>;
 		const latest = await loadProfiles();
 		for (const [id, { name }] of people) {
 			const notes = updates[id];

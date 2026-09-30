@@ -2,7 +2,16 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { generateText } from "ai";
 import { z } from "zod";
-import { model } from "#/ai/model";
+import { CONFIG_DIR } from "#/config/bot";
+import { mapLimit } from "#/helpers/async";
+import { readOptional } from "#/helpers/fs";
+import { parseJsonObject } from "#/helpers/text";
+import { DISTILL_MAX_TOKENS, model } from "#/personality/config";
+import { poolEntries } from "#/personality/prompt";
+import {
+	DISTILL_DIALS_SYSTEM,
+	TAG_EXAMPLES_SYSTEM,
+} from "#/personality/prompts";
 import {
 	clampDial,
 	loadTags,
@@ -12,12 +21,7 @@ import {
 	type Taste,
 	tagsPath,
 	tastePath,
-} from "#/ai/taste";
-import { CONFIG_DIR, DISTILL_MAX_TOKENS } from "#/config/ai";
-import { DISTILL_DIALS_SYSTEM, TAG_EXAMPLES_SYSTEM } from "#/config/prompts";
-import { mapLimit } from "#/helpers/async";
-import { poolEntries, readOptional } from "#/helpers/fs";
-import { parseJsonObject } from "#/helpers/text";
+} from "#/personality/taste";
 
 const TAG_BATCH = 30;
 const CONCURRENCY = 4;
@@ -66,6 +70,8 @@ async function distillDials(): Promise<Taste> {
 	});
 	const { notes, dials } = dialsSchema.parse(parseJsonObject(text));
 	return {
+		// A fresh distill keeps the on/off switch as it was
+		enabled: (await loadTaste(configDir))?.enabled ?? true,
 		notes,
 		dials: Object.fromEntries(
 			Object.entries(dials).map(([name, d]) => [name, { value: 0, ...d }]),

@@ -4,23 +4,14 @@ import {
 	Events,
 	type Message,
 } from "discord.js";
-import { replyWithAI } from "#/ai/chat";
-import {
-	describeChannels,
-	isAIChannel,
-	isMusicChannel,
-	isRandomReplyChannel,
-} from "#/bot/channels";
+import { describeChannels, isMusicChannel } from "#/bot/channels";
 import { fromInteraction, fromMessage } from "#/bot/context";
 import { findCommand } from "#/commands";
-import {
-	CMD_PREFIX,
-	MUSIC_CHANNEL_KEYWORDS,
-	RANDOM_REPLY_CHANCE,
-} from "#/config/bot";
+import { CMD_PREFIX, MUSIC_CHANNEL_KEYWORDS } from "#/config/bot";
 import { CONTROL_ID_PREFIX, QUEUE_ID_PREFIX } from "#/config/music";
 import { channelName } from "#/helpers/discord";
 import { elapsed } from "#/helpers/time";
+import { DIALS_ID_PREFIX, handleDials, maybeReply } from "#/personality";
 import type { Command, CommandContext } from "#/types";
 import { handleControl } from "#/ui/controls";
 import { formatArgument } from "#/ui/format";
@@ -29,6 +20,7 @@ import { handleQueuePage } from "#/ui/queue";
 const buttonHandlers: [string, (i: ButtonInteraction) => Promise<void>][] = [
 	[CONTROL_ID_PREFIX, handleControl],
 	[QUEUE_ID_PREFIX, handleQueuePage],
+	[DIALS_ID_PREFIX, handleDials],
 ];
 
 async function runCommand(
@@ -70,16 +62,7 @@ async function onMessage(message: Message) {
 	const command = found && !found.slashOnly ? found : undefined;
 
 	if (!parsed || !command) {
-		const mentioned = message.mentions.has(message.client.user, {
-			ignoreEveryone: true,
-			ignoreRoles: true,
-		});
-		const { name } = message.channel;
-		const randomReply =
-			isRandomReplyChannel(name) && Math.random() < RANDOM_REPLY_CHANCE;
-		if (mentioned || isAIChannel(name) || randomReply) {
-			await replyWithAI(message).catch(console.error);
-		}
+		await maybeReply(message);
 		return;
 	}
 
@@ -113,6 +96,17 @@ export function registerHandlers(client: Client) {
 				`[button ${interaction.customId}] ${interaction.user.displayName}`,
 			);
 			await handler?.(interaction).catch(console.error);
+			return;
+		}
+
+		if (
+			interaction.isStringSelectMenu() &&
+			interaction.customId.startsWith(DIALS_ID_PREFIX)
+		) {
+			console.log(
+				`[select ${interaction.customId}] ${interaction.user.displayName}: ${interaction.values.join(", ")}`,
+			);
+			await handleDials(interaction).catch(console.error);
 			return;
 		}
 

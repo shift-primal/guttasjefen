@@ -1,8 +1,13 @@
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { z } from "zod";
-import { CONFIG_DIR, DIAL_JITTER, DIAL_LIMIT } from "#/config/ai";
+import { CONFIG_DIR } from "#/config/bot";
 import { readOptional } from "#/helpers/fs";
+import {
+	DIAL_JITTER,
+	DIAL_LIMIT,
+	DIAL_OVERRIDES_PATH,
+} from "#/personality/config";
 
 const dialSchema = z.object({
 	value: z.number(),
@@ -10,14 +15,22 @@ const dialSchema = z.object({
 	high: z.string(),
 });
 const tasteSchema = z.object({
+	// false switches the whole dial system off without deleting anything
+	enabled: z.boolean().default(true),
 	notes: z.string().default(""),
 	dials: z.record(z.string(), dialSchema),
 });
 const tagsSchema = z.record(z.string(), z.record(z.string(), z.number()));
+// Changes made from Discord, kept apart from taste.json since config/ is read-only in Docker
+const overridesSchema = z.object({
+	enabled: z.boolean().optional(),
+	dials: z.record(z.string(), z.number()).default({}),
+});
 
 export type Dial = z.infer<typeof dialSchema>;
 export type Taste = z.infer<typeof tasteSchema>;
 export type Tags = z.infer<typeof tagsSchema>;
+export type DialOverrides = z.infer<typeof overridesSchema>;
 
 export const tastePath = (configDir = CONFIG_DIR) =>
 	join(configDir, "taste.json");
@@ -37,6 +50,53 @@ async function readJson<T>(path: string, schema: z.ZodType<T>) {
 
 export const loadTaste = (configDir = CONFIG_DIR) =>
 	readJson(tastePath(configDir), tasteSchema);
+
+export async function loadDialOverrides(): Promise<DialOverrides> {
+	return (
+		(await readJson(DIAL_OVERRIDES_PATH, overridesSchema)) ?? { dials: {} }
+	);
+}
+
+export async function saveDialOverrides(overrides: DialOverrides) {
+	await mkdir(dirname(DIAL_OVERRIDES_PATH), { recursive: true });
+	await saveJson(DIAL_OVERRIDES_PATH, overrides);
+}
+
+// Changes the saved overrides, dropping any that just repeat taste.json
+export async function updateDialOverrides(
+	taste: Taste,
+	change: (overrides: DialOverrides) => DialOverrides,
+) {
+	const { enabled, dials } = change(await loadDialOverrides());
+	await saveDialOverrides({
+		...(enabled !== undefined && enabled !== taste.enabled ? { enabled } : {}),
+		dials: Object.fromEntries(
+			Object.entries(dials).filter(
+				([name, value]) =>
+					taste.dials[name] && taste.dials[name].value !== value,
+			),
+		),
+	});
+}
+
+// taste.json with the Discord overrides on top. Overrides for dials that no
+// longer exist (after a fresh distill) are ignored
+export async function loadTunedTaste(configDir = CONFIG_DIR) {
+	const taste = await loadTaste(configDir);
+	if (!taste) return null;
+	const { enabled, dials } = await loadDialOverrides();
+	const known = Object.entries(dials).filter(([name]) => name in taste.dials);
+	return {
+		...withOverrides(taste, Object.fromEntries(known)),
+		enabled: enabled ?? taste.enabled,
+	};
+}
+
+// The taste the bot should use right now, or null when it's switched off
+export async function loadActiveTaste(configDir = CONFIG_DIR) {
+	const taste = await loadTunedTaste(configDir);
+	return taste?.enabled ? taste : null;
+}
 
 export async function loadTags(configDir = CONFIG_DIR): Promise<Tags> {
 	return (await readJson(tagsPath(configDir), tagsSchema)) ?? {};
@@ -119,48 +179,4 @@ export function describeTaste(taste: Taste | null) {
 		([name, dial]) => `- ${name}: ${describeDial(dial)}`,
 	);
 	return [taste.notes.trim(), dials.join("\n")].filter(Boolean).join("\n\n");
-}
-
-function weight(tags: Record<string, number>, taste: Taste) {
-	let distance = 0;
-	for (const [name, { value }] of Object.entries(taste.dials)) {
-		const tagged = tags[name];
-		const pull = Math.abs(clampDial(value)) / DIAL_LIMIT;
-		if (tagged !== undefined) distance += pull * (tagged - value) ** 2;
-	}
-	return Math.exp(-distance / 2);
-}
-
-export function pickExamples(
-	entries: string[],
-	tags: Tags,
-	taste: Taste,
-	count: number,
-): string[] {
-	const weights = entries.map((e) => {
-		const t = tags[e];
-		return t ? weight(t, taste) : undefined;
-	});
-	const tagged = weights.filter((w) => w !== undefined);
-	const fallback = tagged.length
-		? tagged.reduce((sum, w) => sum + w, 0) / tagged.length
-		: 1;
-	const pool = entries.map((entry, i) => ({
-		entry,
-		weight: weights[i] ?? fallback,
-	}));
-
-	const picked: string[] = [];
-	while (picked.length < count && pool.length) {
-		const total = pool.reduce((sum, p) => sum + p.weight, 0);
-		const roll = Math.random() * total;
-		let index = 0;
-		for (let sum = 0; index < pool.length - 1; index++) {
-			sum += pool[index]?.weight ?? 0;
-			if (sum >= roll) break;
-		}
-		const [chosen] = pool.splice(index, 1);
-		if (chosen) picked.push(chosen.entry);
-	}
-	return picked;
 }

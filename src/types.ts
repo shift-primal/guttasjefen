@@ -1,14 +1,14 @@
 import type {
 	ActionRowBuilder,
-	ButtonBuilder,
 	Guild,
 	GuildMember,
+	MessageActionRowComponentBuilder,
 	TextBasedChannel,
 } from "discord.js";
 
 export interface ReplyOptions {
 	ephemeral?: boolean;
-	components?: ActionRowBuilder<ButtonBuilder>[];
+	components?: ActionRowBuilder<MessageActionRowComponentBuilder>[];
 }
 
 export interface CommandContext {

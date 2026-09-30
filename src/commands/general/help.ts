@@ -1,11 +1,7 @@
 import { describeChannels } from "#/bot/channels";
 import { commands } from "#/commands";
-import {
-	AI_CHANNEL_KEYWORDS,
-	CMD_PREFIX,
-	MUSIC_CHANNEL_KEYWORDS,
-	RANDOM_REPLY_CHANNEL_KEYWORDS,
-} from "#/config/bot";
+import { CMD_PREFIX, MUSIC_CHANNEL_KEYWORDS } from "#/config/bot";
+import { CHAT_HELP } from "#/personality";
 import type { Command } from "#/types";
 import { formatArgument } from "#/ui/format";
 
@@ -32,9 +28,7 @@ export const help: Command = {
 			`Prefix commands only work in ${describeChannels(MUSIC_CHANNEL_KEYWORDS)}.`,
 		);
 
-		lines.push(
-			`**Chat with me:** tag me or reply to one of my messages in any channel. In ${describeChannels(AI_CHANNEL_KEYWORDS)} I reply to every message, no tag needed, and in ${describeChannels(RANDOM_REPLY_CHANNEL_KEYWORDS)} I butt in every now and then.`,
-		);
+		lines.push(CHAT_HELP);
 
 		await ctx.reply(lines.join("\n \n"));
 	},

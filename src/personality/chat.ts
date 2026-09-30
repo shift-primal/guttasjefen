@@ -1,33 +1,55 @@
 import type { FilePart, TextPart } from "ai";
 import type { Message } from "discord.js";
-import { imageUrls } from "#/ai/images";
-import { model } from "#/ai/model";
+import { channelMatches, describeChannels } from "#/bot/channels";
+import { CMD_PREFIX } from "#/config/bot";
+import { preview } from "#/helpers/discord";
+import { elapsed } from "#/helpers/time";
 import {
+	AI_CHANNEL_KEYWORDS,
+	BEST_OF,
+	HISTORY_LIMIT,
+	OWN_REPLIES_SHOWN,
+	RANDOM_REPLY_CHANCE,
+	RANDOM_REPLY_CHANNEL_KEYWORDS,
+} from "#/personality/config";
+import {
+	clearProfile,
 	describeProfiles,
 	loadProfiles,
 	maybeUpdateProfiles,
 	type Person,
-} from "#/ai/profiles";
-import { buildSystem, buildUserPrompt } from "#/ai/prompt";
-import { generateCandidatesTogether, pickBest } from "#/ai/reply";
-import { jitterTaste, loadTaste, strongDials } from "#/ai/taste";
-import {
-	BEST_OF,
-	HISTORY_LIMIT,
-	MAX_IMAGES,
-	OWN_REPLIES_SHOWN,
-} from "#/config/ai";
-import { CHAT_RESET_MARKER, CMD_PREFIX } from "#/config/bot";
-import { AI_MESSAGES, IMAGE_PROMPT_LABELS } from "#/config/prompts";
+} from "#/personality/profiles";
+import { buildSystem, buildUserPrompt } from "#/personality/prompt";
+import { AI_MESSAGES } from "#/personality/prompts";
+import { generateCandidatesTogether, pickBest } from "#/personality/reply";
+import { jitterTaste, loadActiveTaste, strongDials } from "#/personality/taste";
 import {
 	authorName,
 	describeMessageContent,
 	formatTranscriptLine,
-	preview,
-} from "#/helpers/discord";
-import { elapsed } from "#/helpers/time";
+	imageParts,
+	imageUrls,
+} from "#/personality/transcript";
+import type { Command } from "#/types";
 
-export async function replyWithAI(message: Message<true>) {
+export const CHAT_HELP = `**Chat with me:** tag me or reply to one of my messages in any channel. In ${describeChannels(AI_CHANNEL_KEYWORDS)} I reply to every message, no tag needed, and in ${describeChannels(RANDOM_REPLY_CHANNEL_KEYWORDS)} I butt in every now and then.`;
+
+// Replies when tagged, in AI channels, and now and then in random-reply channels
+export async function maybeReply(message: Message<true>) {
+	const mentioned = message.mentions.has(message.client.user, {
+		ignoreEveryone: true,
+		ignoreRoles: true,
+	});
+	const { name } = message.channel;
+	const randomReply =
+		channelMatches(name, RANDOM_REPLY_CHANNEL_KEYWORDS) &&
+		Math.random() < RANDOM_REPLY_CHANCE;
+	if (mentioned || channelMatches(name, AI_CHANNEL_KEYWORDS) || randomReply) {
+		await replyWithAI(message).catch(console.error);
+	}
+}
+
+async function replyWithAI(message: Message<true>) {
 	const botId = message.client.user.id;
 	const start = performance.now();
 	const author = authorName(message, botId);
@@ -49,7 +71,9 @@ export async function replyWithAI(message: Message<true>) {
 	});
 	const all = [...recent.values()];
 	const reset = all.findIndex(
-		(m) => m.author.id === botId && m.content.startsWith(CHAT_RESET_MARKER),
+		(m) =>
+			m.author.id === botId &&
+			m.content.startsWith(AI_MESSAGES.CHAT_RESET_MARKER),
 	);
 	const log = (reset === -1 ? all : all.slice(0, reset))
 		.reverse()
@@ -100,7 +124,7 @@ export async function replyWithAI(message: Message<true>) {
 	}
 
 	const profiles = describeProfiles(await loadProfiles(), people);
-	const taste = jitterTaste(await loadTaste());
+	const taste = jitterTaste(await loadActiveTaste());
 	const system = await buildSystem(profiles, taste);
 	const prompt = buildUserPrompt(
 		transcript,
@@ -109,7 +133,11 @@ export async function replyWithAI(message: Message<true>) {
 		BEST_OF,
 		taste,
 	);
-	const images = await imageParts(message, author);
+	const images = await imageParts(
+		message,
+		author,
+		log.map(({ m }) => m),
+	);
 
 	const generate = (content: (TextPart | FilePart)[]) =>
 		generateCandidatesTogether(system, content);
@@ -160,37 +188,20 @@ export async function replyWithAI(message: Message<true>) {
 		`[ai] replied in ${elapsed(start)} (xai ${generateTime}, picked ${picked + 1}/${usable.length}${imageCount ? `, ${imageCount} images` : ""}): ${preview(reply)}`,
 	);
 
-	void maybeUpdateProfiles(model, message.channelId, peopleTranscript, people);
+	void maybeUpdateProfiles(message.channelId, peopleTranscript, people);
 }
 
-async function imageParts(message: Message<true>, name: string) {
-	const groups: [string, URL[]][] = [
-		[IMAGE_PROMPT_LABELS.direct(name), imageUrls(message)],
-	];
-
-	if (message.reference?.messageId) {
-		const replied = await message.fetchReference().catch(() => null);
-		if (replied) {
-			const author = authorName(replied, message.client.user.id);
-			groups.push([
-				IMAGE_PROMPT_LABELS.replied(name, author),
-				imageUrls(replied),
-			]);
-		}
-	}
-
-	const parts: (TextPart | FilePart)[] = [];
-	let remaining = MAX_IMAGES;
-	for (const [label, urls] of groups) {
-		const taken = urls.slice(0, remaining);
-		if (taken.length === 0) continue;
-		remaining -= taken.length;
-		parts.push(
-			{ type: "text", text: label },
-			...taken.map(
-				(data): FilePart => ({ type: "file", data, mediaType: "image" }),
-			),
+export const reset: Command = {
+	name: "reset",
+	description:
+		"Make the AI forget this channel's chat history and its notes on you",
+	slashOnly: true,
+	async run(ctx) {
+		const cleared = await clearProfile(ctx.member.id);
+		await ctx.reply(
+			cleared
+				? `${AI_MESSAGES.CHAT_RESET_MARKER} Notes on ${ctx.member.displayName} wiped too.`
+				: AI_MESSAGES.CHAT_RESET_MARKER,
 		);
-	}
-	return parts;
-}
+	},
+};

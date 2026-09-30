@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { YoutubeOptions } from "discord-player-youtubei";
-import { CONFIG_DIR } from "#/config/ai";
+import { CONFIG_DIR } from "#/config/bot";
 import { COOKIE_DOMAIN } from "#/config/music";
 
 function cookieHeader(path: string) {

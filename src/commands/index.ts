@@ -1,4 +1,3 @@
-import { reset } from "#/commands/chat/reset";
 import { help } from "#/commands/general/help";
 import { ping } from "#/commands/general/ping";
 import { loop } from "#/commands/music/loop";
@@ -12,6 +11,7 @@ import { shuffle } from "#/commands/music/shuffle";
 import { skip } from "#/commands/music/skip";
 import { skipTo } from "#/commands/music/skipto";
 import { stop } from "#/commands/music/stop";
+import { personalityCommands } from "#/personality";
 import type { Command } from "#/types";
 
 export const commands: Command[] = [
@@ -28,7 +28,7 @@ export const commands: Command[] = [
 	queue,
 	shuffle,
 	loop,
-	reset,
+	...personalityCommands,
 	help,
 	ping,
 ];

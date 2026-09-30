@@ -1,24 +1,12 @@
-import {
-	AI_CHANNEL_KEYWORDS,
-	MUSIC_CHANNEL_KEYWORDS,
-	RANDOM_REPLY_CHANNEL_KEYWORDS,
-} from "#/config/bot";
+import { MUSIC_CHANNEL_KEYWORDS } from "#/config/bot";
 
-function matches(name: string, keywords: string[]) {
+export function channelMatches(name: string, keywords: string[]) {
 	const lower = name.toLowerCase();
 	return keywords.every((keyword) => lower.includes(keyword));
 }
 
 export function isMusicChannel(name: string) {
-	return matches(name, MUSIC_CHANNEL_KEYWORDS);
-}
-
-export function isAIChannel(name: string) {
-	return matches(name, AI_CHANNEL_KEYWORDS);
-}
-
-export function isRandomReplyChannel(name: string) {
-	return matches(name, RANDOM_REPLY_CHANNEL_KEYWORDS);
+	return channelMatches(name, MUSIC_CHANNEL_KEYWORDS);
 }
 
 export function describeChannels(keywords: string[]) {

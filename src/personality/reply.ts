@@ -1,22 +1,38 @@
 import { type FilePart, generateText, type TextPart } from "ai";
-import { model } from "#/ai/model";
+import { pickRandom } from "#/helpers/random";
 import {
 	BEST_OF,
 	INSULT_TAIL_CHANCE,
 	JUDGE_MAX_TOKENS,
 	JUDGE_TEMPERATURE,
+	model,
 	REPLY_OPTIONS,
-} from "#/config/ai";
-import { JUDGE_STRONG_DIALS_LABEL, JUDGE_SYSTEM } from "#/config/prompts";
-import { pickRandom } from "#/helpers/random";
+} from "#/personality/config";
 import {
-	cleanReply,
+	asksForFact,
+	asksSomething,
+	dodges,
 	hasInsultTail,
 	reusedWords,
 	sharesOpener,
-} from "#/helpers/text";
+	startsWithYesNo,
+	talksAbout,
+} from "#/personality/filters";
+import { JUDGE_STRONG_DIALS_LABEL, JUDGE_SYSTEM } from "#/personality/prompts";
 
 export type Candidate = { reply: string; finishReason: string };
+
+function cleanReply(text: string): string {
+	return (
+		text
+			.replace(/<\|[^|]*\|>[\s\S]*$/, "")
+			.trim()
+			.split("\n")[0]
+			?.replace(/^\[\d{2}:\d{2}\]\s*/, "")
+			.replace(/^Guttasjefen( \(deg\))?:\s*/i, "")
+			.trim() ?? ""
+	);
+}
 
 export async function generateCandidates(
 	system: string,
@@ -89,7 +105,13 @@ export async function pickBest(
 		(r) => sharesOpener(r, context.past),
 	);
 	const allowTail = Math.random() < INSULT_TAIL_CHANCE;
-	const filtered = allowTail ? fresh : keep(fresh, hasInsultTail);
+	const tails = allowTail ? fresh : keep(fresh, hasInsultTail);
+	// "hva heter han?" → "nei han heter per"
+	const facts = asksForFact(context.content)
+		? keep(tails, startsWithYesNo)
+		: tails;
+	const answers = asksSomething(context.content) ? keep(facts, dodges) : facts;
+	const filtered = keep(answers, (r) => talksAbout(r, context.name));
 	const pool = pickRandom(filtered, filtered.length);
 	const picked = await judge(
 		pool.map((i) => replies[i] as string),
