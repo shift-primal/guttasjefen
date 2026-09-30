@@ -1,0 +1,27 @@
+{
+	"name": "@guttasjefen/db",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"generate": "drizzle-kit generate",
+		"migrate": "tsx src/migrate.ts",
+		"push": "drizzle-kit push",
+		"studio": "drizzle-kit studio",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"dotenv": "^18.0.4",
+		"drizzle-orm": "^0.45.1",
+		"pg": "^8.16.3",
+		"tsx": "^4.23.13"
+	},
+	"devDependencies": {
+		"@types/node": "^26.6.2",
+		"@types/pg": "^8.15.6",
+		"drizzle-kit": "^0.31.9",
+		"typescript": "^7.0.2"
+	}
+}

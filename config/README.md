@@ -1,13 +1,13 @@
 # config/
 
 Files the bot reads at runtime but that stay out of git. Mounted read-only into
-Docker and pushed to the server by `pnpm deploy:vps` (empty files are skipped).
+the bot's container; on Coolify they live in the app's `config/` folder on the server.
 
 ```
 config/
 ├── music/
-│   └── cookies.txt          YouTube cookies (Netscape format), src/music/extractors/youtube.ts
-└── personality/             src/personality, `--config` in both scripts points here
+│   └── cookies.txt          YouTube cookies (Netscape format), apps/bot/src/music/extractors/youtube.ts
+└── personality/             apps/bot/src/personality, `--config` in both scripts points here
     ├── persona.md           who the bot is, top of the system prompt (prompt.ts)
     ├── chat-rules.md        how it writes in chat, after the persona (prompt.ts)
     ├── lore.md              the start of its made-up life, always in the prompt (lore.ts)

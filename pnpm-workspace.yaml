@@ -1,4 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+
 allowBuilds:
   '@discordjs/opus': true
   esbuild: true
+  lightningcss: true
   youtube-dl-exec: true

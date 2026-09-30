@@ -4,5 +4,5 @@ cookies.txt
 data
 /config/*
 !/config/README.md
-/scripts/scenarios/*
-!/scripts/scenarios/.gitkeep
+/apps/bot/scripts/scenarios/*
+!/apps/bot/scripts/scenarios/.gitkeep

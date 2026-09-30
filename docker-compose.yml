@@ -1,11 +1,68 @@
 services:
-  bot:
-    build: .
-    container_name: guttasjefen
+  db:
+    image: postgres:18
     restart: unless-stopped
-    env_file: .env
+    environment:
+      POSTGRES_USER: ${SERVICE_USER_POSTGRES}
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
+      POSTGRES_DB: ${POSTGRES_DB:-guttasjefen}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: packages/db/Dockerfile
+    restart: "no"
+    exclude_from_hc: true
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@db:5432/${POSTGRES_DB:-guttasjefen}
+
+  bot:
+    build:
+      context: .
+      dockerfile: apps/bot/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?}
+      CLIENT_ID: ${CLIENT_ID}
+      XAI_API_KEY: ${XAI_API_KEY:?}
+      DP_SPOTIFY_CLIENT_ID: ${DP_SPOTIFY_CLIENT_ID}
+      DP_SPOTIFY_CLIENT_SECRET: ${DP_SPOTIFY_CLIENT_SECRET}
+      DEBUG_PLAYER: ${DEBUG_PLAYER:-false}
+      BOT_PREFIX: ${BOT_PREFIX}
+      RANDOM_REPLY_CHANCE: ${RANDOM_REPLY_CHANCE}
+      DATABASE_URL: postgres://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@db:5432/${POSTGRES_DB:-guttasjefen}
     volumes:
       # Mounted as a folder (cookies.txt included) so edits show up even when a file is replaced
       - ./config:/app/config:ro
       # Profiles the bot keeps on each user, written at runtime
-      - ./data:/app/data
+      - bot-data:/app/data
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@db:5432/${POSTGRES_DB:-guttasjefen}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?}
+      BETTER_AUTH_SECRET: ${SERVICE_PASSWORD_64_BETTERAUTH}
+
+volumes:
+  postgres-data:
+  bot-data:

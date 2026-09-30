@@ -1,22 +1,23 @@
 {
 	"name": "guttasjefen",
-	"version": "1.0.0",
-	"description": "discord bot",
-	"main": "src/index.ts",
+	"private": true,
 	"packageManager": "pnpm@12.6.0",
 	"type": "module",
-	"imports": {
-		"#/*": "./src/*"
-	},
 	"scripts": {
-		"start": "tsx src/index.ts",
-		"register:commands": "tsx src/register-commands.ts",
-		"test:prompt": "tsx scripts/test-prompt.ts",
-		"distill:taste": "tsx scripts/distill-taste.ts",
-		"deploy:vps": "bash scripts/deploy.sh",
-		"typecheck": "tsc --noEmit",
-		"lint": "biome check src",
-		"format": "biome check --write src"
+		"dev": "pnpm db:up && pnpm db:migrate && pnpm -r --parallel dev",
+		"bot": "pnpm --filter @guttasjefen/bot start",
+		"web": "pnpm --filter @guttasjefen/web dev",
+		"register:commands": "pnpm --filter @guttasjefen/bot register:commands",
+		"test:prompt": "pnpm --filter @guttasjefen/bot test:prompt",
+		"distill:taste": "pnpm --filter @guttasjefen/bot distill:taste",
+		"db:up": "docker compose -f docker-compose.dev.yml up -d --wait",
+		"db:generate": "pnpm --filter @guttasjefen/db generate",
+		"db:migrate": "pnpm --filter @guttasjefen/db migrate",
+		"db:push": "pnpm --filter @guttasjefen/db push",
+		"db:studio": "pnpm --filter @guttasjefen/db studio",
+		"typecheck": "pnpm -r typecheck",
+		"lint": "biome check .",
+		"format": "biome check --write ."
 	},
 	"devEngines": {
 		"packageManager": {
@@ -25,27 +26,7 @@
 			"onFail": "download"
 		}
 	},
-	"dependencies": {
-		"@ai-sdk/xai": "^5.0.10",
-		"@discord-player/extractor": "^7.2.0",
-		"@discordjs/opus": "^0.10.0",
-		"@snazzah/davey": "^0.1.12",
-		"ai": "^7.0.116",
-		"bgutils-js": "^4.0.3",
-		"discord-player": "^7.2.0",
-		"discord-player-youtubei": "^3.1.0",
-		"discord.js": "^14.27.0",
-		"dotenv": "^18.0.4",
-		"googlevideo": "^4.1.1",
-		"mediaplex": "^1.0.0",
-		"simple-ytdl-core": "^1.1.1",
-		"tsx": "^4.23.13",
-		"youtube-dl-exec": "^3.1.15",
-		"zod": "^4.6.5"
-	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.5.14",
-		"@types/node": "^26.6.2",
-		"typescript": "^7.0.2"
+		"@biomejs/biome": "^2.5.14"
 	}
 }

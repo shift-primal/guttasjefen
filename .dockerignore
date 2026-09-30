@@ -1,7 +1,12 @@
-node_modules
-.env
-.env.*
+**/node_modules
+**/.env
+**/.env.*
 !.env.example
+**/.output
+**/.nitro
+**/.tanstack
 .git
 docs
+config
+data
 cookies.txt
