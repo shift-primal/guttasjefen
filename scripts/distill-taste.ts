@@ -2,11 +2,14 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { generateText } from "ai";
 import { z } from "zod";
-import { CONFIG_DIR } from "#/config/bot";
 import { mapLimit } from "#/helpers/async";
 import { readOptional } from "#/helpers/fs";
 import { parseJsonObject } from "#/helpers/text";
-import { DISTILL_MAX_TOKENS, model } from "#/personality/config";
+import {
+	DISTILL_MAX_TOKENS,
+	model,
+	PERSONALITY_CONFIG_DIR,
+} from "#/personality/config";
 import { poolEntries } from "#/personality/prompt";
 import {
 	DISTILL_DIALS_SYSTEM,
@@ -28,7 +31,7 @@ const CONCURRENCY = 4;
 
 const { values } = parseArgs({
 	options: {
-		config: { type: "string", short: "c", default: CONFIG_DIR },
+		config: { type: "string", short: "c", default: PERSONALITY_CONFIG_DIR },
 		fresh: { type: "boolean", default: false },
 	},
 });

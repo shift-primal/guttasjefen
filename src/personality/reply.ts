@@ -18,7 +18,12 @@ import {
 	startsWithYesNo,
 	talksAbout,
 } from "#/personality/filters";
-import { JUDGE_STRONG_DIALS_LABEL, JUDGE_SYSTEM } from "#/personality/prompts";
+import {
+	JUDGE_CLAIM_NOTE,
+	JUDGE_LORE_LABEL,
+	JUDGE_STRONG_DIALS_LABEL,
+	JUDGE_SYSTEM,
+} from "#/personality/prompts";
 
 export type Candidate = { reply: string; finishReason: string };
 
@@ -67,7 +72,7 @@ export async function generateCandidatesTogether(
 	const { text, finishReason } = await generateText({
 		model,
 		...REPLY_OPTIONS,
-		maxOutputTokens: REPLY_OPTIONS.maxOutputTokens * 2,
+		maxOutputTokens: REPLY_OPTIONS.maxOutputTokens * BEST_OF,
 		temperature,
 		system,
 		messages: [{ role: "user", content }],
@@ -78,6 +83,8 @@ export async function generateCandidatesTogether(
 		.map((line) => line.match(/^\s*\d+[.):]\s*(.+)$/)?.[1])
 		.map((line) => (line ? cleanReply(line) : undefined))
 		.filter((reply): reply is string => Boolean(reply));
+	// Hitting the token cap cuts the last reply off mid-sentence
+	if (finishReason === "length" && numbered.length > 1) numbered.pop();
 	const replies = numbered.length ? numbered : [cleanReply(text)];
 	return replies.map((reply) => ({ reply, finishReason }));
 }
@@ -90,6 +97,8 @@ type JudgeContext = {
 	others: string;
 	people: string;
 	strongDials: string[];
+	lore: string;
+	acceptClaims: boolean;
 };
 
 export async function pickBest(
@@ -135,6 +144,9 @@ async function judge(replies: string[], context: JudgeContext) {
 	const recent = context.recent.length
 		? `Guttasjefens siste svar:\n${context.recent.map((r) => `- ${r}`).join("\n")}\n\n`
 		: "";
+	const lore = context.lore
+		? `${JUDGE_LORE_LABEL}\n${context.lore}\n\n${JUDGE_CLAIM_NOTE(context.acceptClaims)}\n\n`
+		: "";
 	const strong = context.strongDials.length
 		? `${JUDGE_STRONG_DIALS_LABEL}\n${context.strongDials.map((d) => `- ${d}`).join("\n")}\n\n`
 		: "";
@@ -144,7 +156,7 @@ async function judge(replies: string[], context: JudgeContext) {
 			temperature: JUDGE_TEMPERATURE,
 			maxOutputTokens: JUDGE_MAX_TOKENS,
 			system: JUDGE_SYSTEM,
-			prompt: `Chatlogg:\n${context.transcript}${context.people}\n\n${recent}${strong}Siste melding, fra ${context.name}: ${context.content}\n\nSvar å velge mellom:\n${numbered}`,
+			prompt: `Chatlogg:\n${context.transcript}${context.people}\n\n${lore}${recent}${strong}Siste melding, fra ${context.name}: ${context.content}\n\nSvar å velge mellom:\n${numbered}`,
 		});
 		const picked = Number(text.match(/best:\s*(\d+)/i)?.[1]);
 		return picked >= 1 && picked <= replies.length ? picked - 1 : 0;

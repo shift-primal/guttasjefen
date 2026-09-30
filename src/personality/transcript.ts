@@ -81,9 +81,10 @@ export function imageUrls(msg: Message): URL[] {
 	return urls;
 }
 
-export async function imageParts(
+export function imageParts(
 	message: Message<true>,
 	name: string,
+	replied: Message | null,
 	log: Message[],
 ) {
 	const botId = message.client.user.id;
@@ -91,15 +92,12 @@ export async function imageParts(
 		[IMAGE_PROMPT_LABELS.direct(name), imageUrls(message)],
 	];
 
-	if (message.reference?.messageId) {
-		const replied = await message.fetchReference().catch(() => null);
-		if (replied) {
-			const author = authorName(replied, botId);
-			groups.push([
-				IMAGE_PROMPT_LABELS.replied(name, author),
-				imageUrls(replied),
-			]);
-		}
+	if (replied) {
+		const author = authorName(replied, botId);
+		groups.push([
+			IMAGE_PROMPT_LABELS.replied(name, author),
+			imageUrls(replied),
+		]);
 	}
 
 	// "gjett hva dette er" [bilde], then "svar da" without it: they still mean that picture

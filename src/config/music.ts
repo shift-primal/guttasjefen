@@ -9,6 +9,7 @@ export const PAGE_SIZE = 10;
 export const CONTROL_ID_PREFIX = "ctl:";
 export const QUEUE_ID_PREFIX = "queue:";
 
+export const COOKIES_PATH = "config/music/cookies.txt";
 export const TOKEN_URL = "https://accounts.spotify.com/api/token";
 export const SPOTIFY_LINK = /^(https?:\/\/open\.spotify\.com\/|spotify:)/;
 export const COOKIE_DOMAIN = /(^|\.)(youtube|google)\.com$/;

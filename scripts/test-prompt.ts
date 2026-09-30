@@ -3,18 +3,20 @@ import { appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
-import { CONFIG_DIR } from "#/config/bot";
 import { mapLimit } from "#/helpers/async";
 import { formatTime } from "#/helpers/time";
 import {
 	BEST_OF,
+	CLAIM_ACCEPT_CHANCE,
 	COMMON_WORDS,
 	DIAL_JITTER,
 	DIAL_LIMIT,
 	OWN_REPLIES_SHOWN,
+	PERSONALITY_CONFIG_DIR,
 	REPLY_OPTIONS,
 } from "#/personality/config";
 import { words } from "#/personality/filters";
+import { describeLore } from "#/personality/lore";
 import {
 	describeProfiles,
 	loadProfiles,
@@ -39,11 +41,14 @@ const BOT_NAME = /^(bot|guttasjefen)$/i;
 
 const { values, positionals } = parseArgs({
 	allowPositionals: true,
+	allowNegative: true,
 	options: {
 		runs: { type: "string", short: "n", default: "20" },
-		config: { type: "string", short: "c", default: CONFIG_DIR },
+		config: { type: "string", short: "c", default: PERSONALITY_CONFIG_DIR },
 		count: { type: "string", multiple: true, default: [] },
 		profiles: { type: "boolean", default: false },
+		// Its made-up life from lore.md and data/lore.json, --no-lore to leave it out
+		lore: { type: "boolean", default: true },
 		"show-prompt": { type: "boolean", default: false },
 		quiet: { type: "boolean", short: "q", default: false },
 		temperature: { type: "string", short: "t" },
@@ -86,7 +91,7 @@ function parseScenario(text: string): Line[] {
 async function loadScenario(arg: string | undefined) {
 	if (!arg) {
 		console.error(
-			"Usage: pnpm test:prompt <scenario file | message> [-n 20] [-t temperature] [-b best-of] [-d dial=value ...] [--taste on|off] [-j jitter] [--separate] [-v] [--count regex] [--config dir] [--profiles] [--show-prompt] [-q]",
+			"Usage: pnpm test:prompt <scenario file | message> [-n 20] [-t temperature] [-b best-of] [-d dial=value ...] [--taste on|off] [-j jitter] [--separate] [-v] [--count regex] [--config dir] [--profiles] [--no-lore] [--show-prompt] [-q]",
 		);
 		process.exit(1);
 	}
@@ -158,13 +163,23 @@ function isLoop(text: string) {
 const { lines, last } = await loadScenario(positionals[0]);
 const runs = Number(values.runs);
 const own = lines.filter((l) => l.bot && l.text !== "-");
-const shownOwn = new Set(own.slice(-OWN_REPLIES_SHOWN));
+// Its last few replies, plus every reply to whoever it's answering now, like the live bot
+const speaker = (i: number) =>
+	lines
+		.slice(0, i)
+		.filter((l) => !l.bot)
+		.at(-1)?.name;
+const shownOwn = new Set([
+	...own.slice(-OWN_REPLIES_SHOWN),
+	...own.filter((l) => speaker(lines.indexOf(l)) === last.name),
+]);
+const recentOwn = own.slice(-OWN_REPLIES_SHOWN);
 const formatted = lines.map((l) => ({
 	l,
 	line: `[${l.time}] ${l.bot ? "Guttasjefen (deg)" : l.name}: ${l.bot && !shownOwn.has(l) ? AI_MESSAGES.OWN_REPLY_PLACEHOLDER : l.text}`,
 }));
 const transcript = formatted.map(({ line }) => line).join("\n");
-const recent = [...shownOwn].map((l) => l.text);
+const recent = recentOwn.map((l) => l.text);
 const others = formatted
 	.filter(({ l }) => !l.bot)
 	.map(({ line }) => line)
@@ -172,19 +187,26 @@ const others = formatted
 const name = last.name.replace(/\s*\(.*\)$/, "");
 const profiles = await profilesFor(lines);
 const taste = await tasteFor(values.dial, values.taste);
+const lore = values.lore ? await describeLore(transcript, values.config) : "";
 
 const bestOf = Number(values["best-of"]);
 const together = !values.separate && bestOf > 1;
 
 if (values["show-prompt"]) {
-	const system = await buildSystem(profiles, taste, values.config);
-	const prompt = buildUserPrompt(
+	const system = await buildSystem({
+		profiles,
+		taste,
+		lore,
+		configDir: values.config,
+	});
+	const prompt = buildUserPrompt({
 		transcript,
 		name,
-		last.text,
-		together ? bestOf : 1,
-		taste,
-	);
+		content: last.text,
+		count: together ? bestOf : 1,
+		taste: taste,
+		acceptClaims: Math.random() < CLAIM_ACCEPT_CHANCE,
+	});
 	console.log(`=== SYSTEM ===\n${system}\n\n=== USER ===\n${prompt}\n`);
 }
 
@@ -211,14 +233,21 @@ const results = await mapLimit(
 	CONCURRENCY,
 	async () => {
 		const wobbled = jitterTaste(taste, Number(values.jitter));
-		const system = await buildSystem(profiles, wobbled, values.config);
-		const prompt = buildUserPrompt(
+		const acceptClaims = Math.random() < CLAIM_ACCEPT_CHANCE;
+		const system = await buildSystem({
+			profiles,
+			taste: wobbled,
+			lore,
+			configDir: values.config,
+		});
+		const prompt = buildUserPrompt({
 			transcript,
 			name,
-			last.text,
-			together ? bestOf : 1,
-			wobbled,
-		);
+			content: last.text,
+			count: together ? bestOf : 1,
+			taste: wobbled,
+			acceptClaims,
+		});
 		const started = performance.now();
 		try {
 			const content = [{ type: "text" as const, text: prompt }];
@@ -236,6 +265,8 @@ const results = await mapLimit(
 					others,
 					people: profiles,
 					strongDials: strongDials(wobbled),
+					lore,
+					acceptClaims,
 				},
 			);
 			const { reply, finishReason } = candidates[picked] ?? {

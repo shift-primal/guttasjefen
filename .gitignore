@@ -3,6 +3,6 @@ node_modules
 cookies.txt
 data
 /config/*
-!/config/.gitkeep
+!/config/README.md
 /scripts/scenarios/*
 !/scripts/scenarios/.gitkeep

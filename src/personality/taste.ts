@@ -1,12 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import { CONFIG_DIR } from "#/config/bot";
 import { readOptional } from "#/helpers/fs";
 import {
 	DIAL_JITTER,
 	DIAL_LIMIT,
 	DIAL_OVERRIDES_PATH,
+	PERSONALITY_CONFIG_DIR,
 } from "#/personality/config";
 
 const dialSchema = z.object({
@@ -32,10 +32,10 @@ export type Taste = z.infer<typeof tasteSchema>;
 export type Tags = z.infer<typeof tagsSchema>;
 export type DialOverrides = z.infer<typeof overridesSchema>;
 
-export const tastePath = (configDir = CONFIG_DIR) =>
-	join(configDir, "taste.json");
-export const tagsPath = (configDir = CONFIG_DIR) =>
-	join(configDir, "example-tags.json");
+export const tastePath = (configDir = PERSONALITY_CONFIG_DIR) =>
+	join(configDir, "taste", "taste.json");
+export const tagsPath = (configDir = PERSONALITY_CONFIG_DIR) =>
+	join(configDir, "taste", "example-tags.json");
 
 async function readJson<T>(path: string, schema: z.ZodType<T>) {
 	const text = await readOptional(path);
@@ -48,7 +48,7 @@ async function readJson<T>(path: string, schema: z.ZodType<T>) {
 	}
 }
 
-export const loadTaste = (configDir = CONFIG_DIR) =>
+export const loadTaste = (configDir = PERSONALITY_CONFIG_DIR) =>
 	readJson(tastePath(configDir), tasteSchema);
 
 export async function loadDialOverrides(): Promise<DialOverrides> {
@@ -81,7 +81,7 @@ export async function updateDialOverrides(
 
 // taste.json with the Discord overrides on top. Overrides for dials that no
 // longer exist (after a fresh distill) are ignored
-export async function loadTunedTaste(configDir = CONFIG_DIR) {
+export async function loadTunedTaste(configDir = PERSONALITY_CONFIG_DIR) {
 	const taste = await loadTaste(configDir);
 	if (!taste) return null;
 	const { enabled, dials } = await loadDialOverrides();
@@ -93,16 +93,19 @@ export async function loadTunedTaste(configDir = CONFIG_DIR) {
 }
 
 // The taste the bot should use right now, or null when it's switched off
-export async function loadActiveTaste(configDir = CONFIG_DIR) {
+export async function loadActiveTaste(configDir = PERSONALITY_CONFIG_DIR) {
 	const taste = await loadTunedTaste(configDir);
 	return taste?.enabled ? taste : null;
 }
 
-export async function loadTags(configDir = CONFIG_DIR): Promise<Tags> {
+export async function loadTags(
+	configDir = PERSONALITY_CONFIG_DIR,
+): Promise<Tags> {
 	return (await readJson(tagsPath(configDir), tagsSchema)) ?? {};
 }
 
 export async function saveJson(path: string, data: unknown) {
+	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, `${JSON.stringify(data, null, "\t")}\n`);
 }
 

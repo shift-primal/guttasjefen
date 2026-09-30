@@ -10,11 +10,11 @@ import {
 import { refuse } from "#/commands/guards";
 import { hasRole, preview } from "#/helpers/discord";
 import {
+	DEV_ROLE,
 	DIAL_JITTER,
 	DIAL_LIMIT,
 	DIAL_STEP,
 	DIALS_ID_PREFIX,
-	DIALS_ROLE,
 } from "#/personality/config";
 import {
 	clampDial,
@@ -202,9 +202,9 @@ function change(
 
 export async function handleDials(interaction: DialInteraction) {
 	if (!interaction.inCachedGuild()) return;
-	if (!hasRole(interaction.member, DIALS_ROLE)) {
+	if (!hasRole(interaction.member, DEV_ROLE)) {
 		await interaction.reply({
-			content: `Only the **${DIALS_ROLE}** role can change the dials.`,
+			content: `Only the **${DEV_ROLE}** role can change the dials.`,
 			flags: MessageFlags.Ephemeral,
 		});
 		return;
@@ -292,8 +292,8 @@ function applyArgs(
 }
 
 async function run(ctx: CommandContext) {
-	if (!hasRole(ctx.member, DIALS_ROLE)) {
-		return refuse(ctx, `Only the **${DIALS_ROLE}** role can use the dials.`);
+	if (!hasRole(ctx.member, DEV_ROLE)) {
+		return refuse(ctx, `Only the **${DEV_ROLE}** role can use the dials.`);
 	}
 	const base = await loadTaste();
 	if (!base) {
@@ -328,7 +328,7 @@ async function run(ctx: CommandContext) {
 export const dials: Command = {
 	name: "dials",
 	aliases: ["dial", "taste"],
-	description: `Open the AI's humour dials panel (${DIALS_ROLE} role only)`,
+	description: `Open the AI's humour dials panel (${DEV_ROLE} role only)`,
 	argument: {
 		name: "settings",
 		description: `Quick set, e.g. "hostility 2 absurdity -1", "off", "reset" (empty just opens the panel)`,

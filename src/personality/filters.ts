@@ -71,8 +71,24 @@ const TAIL_FILLERS = new Set(
 	"igjen da eller nå også heller lenger altså liksom engang".split(" "),
 );
 
+// "arne idiot", "han er på jobb idiot ikke her": the insult on its own, no "din"
+const BARE_INSULTS = new Set(
+	"idiot idioten dust tulling taper loser fiasko klovn tosk noob".split(" "),
+);
+
+const PART_OF_SENTENCE = new Set(
+	"en ei et som den det er var blir ble like for av med til fra".split(" "),
+);
+
 export function hasInsultTail(reply: string): boolean {
 	const w = reply.toLowerCase().match(/[\p{L}\d-]+/gu) ?? [];
+	// "han jobber med en idiot" says who someone is, it isn't tacked on
+	const tacked = (i: number) =>
+		BARE_INSULTS.has(w[i] as string) &&
+		!PART_OF_SENTENCE.has(w[i - 1] as string);
+	if (w.length > 1 && tacked(w.length - 1)) return true;
+	if (w.length <= 8 && w.slice(1, -1).some((_, j) => tacked(j + 1)))
+		return true;
 	for (let tail = 1; tail <= 3; tail++) {
 		const i = w.length - tail - 1;
 		const before = w[i - 1];

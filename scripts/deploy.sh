@@ -40,7 +40,7 @@ rsync -az --delete \
 echo "==> Syncing config"
 config_files=()
 while IFS= read -r -d '' file; do
-	if [[ "$file" == config/cookies.txt && "$SYNC_COOKIES" != true ]]; then
+	if [[ "$file" == config/music/cookies.txt && "$SYNC_COOKIES" != true ]]; then
 		echo "skipping $file, pass --cookies to overwrite the server's copy"
 	elif grep -q '[^[:space:]]' "$file"; then
 		config_files+=("${file#config/}")
@@ -71,14 +71,25 @@ if [[ -n "$missing" ]]; then
 	echo "warning: server .env is missing keys from .env.example:" $missing
 fi
 
-# Cookies used to live in the project root; move them into config/ once
-if [[ -f cookies.txt && ! -f config/cookies.txt ]]; then
-	echo "moving cookies.txt into config/"
-	mkdir -p config
-	mv cookies.txt config/cookies.txt
-fi
-if [[ ! -f config/cookies.txt ]]; then
-	echo "warning: no config/cookies.txt on the server, YouTube will play without cookies"
+# Cookies used to live in the project root, and config/ used to be flat; move files
+# into their subfolders once. A copy already there came from this deploy and wins
+for moved in config/cookies.txt:music/cookies.txt cookies.txt:music/cookies.txt \
+	config/{persona.md,chat-rules.md,examples.txt,disliked.txt,issues.txt}:personality/ \
+	config/{taste.json,example-tags.json}:personality/taste/; do
+	old="${moved%%:*}"
+	new="config/${moved#*:}"
+	[[ "$new" == */ ]] && new="$new$(basename "$old")"
+	[[ -f "$old" ]] || continue
+	if [[ -f "$new" ]]; then
+		rm "$old"
+	else
+		echo "moving $old to $new"
+		mkdir -p "$(dirname "$new")"
+		mv "$old" "$new"
+	fi
+done
+if [[ ! -f config/music/cookies.txt ]]; then
+	echo "warning: no config/music/cookies.txt on the server, YouTube will play without cookies"
 fi
 
 docker compose up -d --build --remove-orphans
