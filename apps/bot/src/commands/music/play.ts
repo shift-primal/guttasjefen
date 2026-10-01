@@ -1,7 +1,7 @@
 import type { VoiceBasedChannel } from "discord.js";
 import { type GuildQueue, useMainPlayer, useQueue } from "discord-player";
 import { requireVoiceChannel } from "#/commands/guards";
-import { QUEUE_OPTIONS } from "#/config/music";
+import { queueOptions } from "#/config/music";
 import { skipCurrent } from "#/music/skip";
 import type { Command, CommandContext, QueueMetadata } from "#/types";
 import { formatPlaylist, formatTrack } from "#/ui/format";
@@ -68,7 +68,7 @@ async function playAtEnd(ctx: CommandContext, voiceChannel: VoiceBasedChannel) {
 		ctx.args,
 		{
 			requestedBy: ctx.member.user,
-			nodeOptions: { metadata, ...QUEUE_OPTIONS },
+			nodeOptions: { metadata, ...queueOptions() },
 		},
 	);
 	const { playlist } = searchResult;

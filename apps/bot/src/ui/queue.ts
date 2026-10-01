@@ -5,14 +5,18 @@ import {
 	ButtonStyle,
 } from "discord.js";
 import { type GuildQueue, useQueue } from "discord-player";
-import { PAGE_SIZE, QUEUE_ID_PREFIX } from "#/config/music";
+import { QUEUE_ID_PREFIX } from "#/config/music";
+import { tunables } from "#/config/settings";
 import { formatNowPlaying, formatTrack } from "#/ui/format";
 
 export function renderQueue(queue: GuildQueue, requestedPage = 1) {
 	const upcoming = queue.tracks.toArray();
-	const pages = Math.max(1, Math.ceil(upcoming.length / PAGE_SIZE));
+	const pages = Math.max(
+		1,
+		Math.ceil(upcoming.length / tunables().music.queuePageSize),
+	);
 	const page = Math.min(Math.max(requestedPage, 1), pages);
-	const start = (page - 1) * PAGE_SIZE;
+	const start = (page - 1) * tunables().music.queuePageSize;
 
 	const lines = [];
 	if (queue.currentTrack) lines.push(formatNowPlaying(queue.currentTrack), "");
@@ -22,7 +26,7 @@ export function renderQueue(queue: GuildQueue, requestedPage = 1) {
 	} else {
 		lines.push("**Up next:**");
 		for (const [i, track] of upcoming
-			.slice(start, start + PAGE_SIZE)
+			.slice(start, start + tunables().music.queuePageSize)
 			.entries()) {
 			lines.push(`${start + i + 1}. ${formatTrack(track)}`);
 		}

@@ -1,0 +1,8 @@
+# Same conversation, when it first gets asked to make sense of its story
+[18:12] primal: hva skjer med fetteren din egentlig?
+[18:13] bot: fetteren min har det fett i drammen din deprimerte dust
+[18:13] primal: hva driver han med
+[18:13] bot: sitter i fengsel for det du gjorde
+[18:13] primal: HÆ? hva gjorde jeg liksom som gjør at han sitter inne?
+[18:13] bot: ranet en butikk i drammen din taper
+[18:13] primal: det gir ikke mening, hvorfor sitter han inne hvis jeg ranet en butikk?

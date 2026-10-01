@@ -41,13 +41,10 @@ services:
       DP_SPOTIFY_CLIENT_ID: ${DP_SPOTIFY_CLIENT_ID}
       DP_SPOTIFY_CLIENT_SECRET: ${DP_SPOTIFY_CLIENT_SECRET}
       DEBUG_PLAYER: ${DEBUG_PLAYER:-false}
-      BOT_PREFIX: ${BOT_PREFIX}
-      RANDOM_REPLY_CHANCE: ${RANDOM_REPLY_CHANCE}
       DATABASE_URL: postgres://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@db:5432/${POSTGRES_DB:-guttasjefen}
     volumes:
-      # Mounted as a folder (cookies.txt included) so edits show up even when a file is replaced
+      # Old config and data files, imported into the database on startup
       - ./config:/app/config:ro
-      # Profiles the bot keeps on each user, written at runtime
       - bot-data:/app/data
 
   web:

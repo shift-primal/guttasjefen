@@ -1,7 +1,11 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
+import { registerGuildSync } from "#/bot/guilds";
 import { registerHandlers } from "#/bot/handlers";
+import { startSync } from "#/bot/sync";
 import { env } from "#/config/env";
+import { refreshSettings } from "#/config/settings";
 import { setupPlayer } from "#/music/setup";
+import { importFiles } from "#/personality/import-files";
 
 const client = new Client({
 	intents: [
@@ -12,8 +16,12 @@ const client = new Client({
 	],
 });
 
+await importFiles();
+await refreshSettings();
 await setupPlayer(client);
+await startSync();
 registerHandlers(client);
+registerGuildSync(client);
 
 client.once(Events.ClientReady, (c) => {
 	console.log(`Logged in as ${c.user.tag}`);

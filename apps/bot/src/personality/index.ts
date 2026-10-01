@@ -4,7 +4,7 @@ import { dials } from "#/personality/dials";
 import { lore } from "#/personality/lore";
 import type { Command } from "#/types";
 
-export { CHAT_HELP, maybeReply } from "#/personality/chat";
+export { chatHelp, maybeReply } from "#/personality/chat";
 export { DIALS_ID_PREFIX } from "#/personality/config";
 export { handleDials } from "#/personality/dials";
 

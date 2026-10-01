@@ -1,12 +1,9 @@
 import type { FilePart, TextPart } from "ai";
 import { type Message, cleanContent as resolveMentions } from "discord.js";
+import { prompts, tunables } from "#/config/settings";
+import { fill } from "#/helpers/text";
 import { formatTime } from "#/helpers/time";
-import {
-	DIRECT_IMAGE_TYPES,
-	MAX_IMAGE_BYTES,
-	MAX_IMAGES,
-} from "#/personality/config";
-import { AI_MESSAGES, IMAGE_PROMPT_LABELS } from "#/personality/prompts";
+import { DIRECT_IMAGE_TYPES, MAX_IMAGE_BYTES } from "#/personality/config";
 
 export function authorName(msg: Message, botId: string): string {
 	if (msg.author.id === botId) return "Guttasjefen (deg)";
@@ -48,7 +45,7 @@ export function formatTranscriptLine(
 				target.displayName));
 	const replyTo = targetName ? ` (svarer ${targetName})` : "";
 	const content = options?.hidden
-		? AI_MESSAGES.OWN_REPLY_PLACEHOLDER
+		? prompts().ownReplyPlaceholder
 		: describeMessageContent(msg, botId, options?.imageCount ?? 0);
 	return `[${time}] ${authorName(msg, botId)}${replyTo}: ${content}`;
 }
@@ -89,13 +86,13 @@ export function imageParts(
 ) {
 	const botId = message.client.user.id;
 	const groups: [string, URL[]][] = [
-		[IMAGE_PROMPT_LABELS.direct(name), imageUrls(message)],
+		[fill(prompts().imageDirect, { name }), imageUrls(message)],
 	];
 
 	if (replied) {
 		const author = authorName(replied, botId);
 		groups.push([
-			IMAGE_PROMPT_LABELS.replied(name, author),
+			fill(prompts().imageReplied, { name, author }),
 			imageUrls(replied),
 		]);
 	}
@@ -105,17 +102,17 @@ export function imageParts(
 		const earlier = [...log].reverse().find((m) => imageUrls(m).length > 0);
 		if (earlier) {
 			groups.push([
-				IMAGE_PROMPT_LABELS.earlier(
-					authorName(earlier, botId),
-					formatTime(earlier.createdAt),
-				),
+				fill(prompts().imageEarlier, {
+					author: authorName(earlier, botId),
+					time: formatTime(earlier.createdAt),
+				}),
 				imageUrls(earlier),
 			]);
 		}
 	}
 
 	const parts: (TextPart | FilePart)[] = [];
-	let remaining = MAX_IMAGES;
+	let remaining = tunables().chat.maxImages;
 	for (const [label, urls] of groups) {
 		const taken = urls.slice(0, remaining);
 		if (taken.length === 0) continue;

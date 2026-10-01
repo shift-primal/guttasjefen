@@ -1,63 +1,55 @@
 import { existsSync } from "node:fs";
-import { appendFile, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
+import { addExamples, loadProfiles, loadTaste } from "@guttasjefen/db";
+import { DIAL_LIMIT, withOverrides } from "@guttasjefen/db/settings";
+import { prompts, refreshSettings, tunables } from "#/config/settings";
+import { db } from "#/db";
 import { mapLimit } from "#/helpers/async";
 import { formatTime } from "#/helpers/time";
-import {
-	BEST_OF,
-	CLAIM_ACCEPT_CHANCE,
-	COMMON_WORDS,
-	DIAL_JITTER,
-	DIAL_LIMIT,
-	OWN_REPLIES_SHOWN,
-	PERSONALITY_CONFIG_DIR,
-	REPLY_OPTIONS,
-} from "#/personality/config";
 import { words } from "#/personality/filters";
 import { describeLore } from "#/personality/lore";
-import {
-	describeProfiles,
-	loadProfiles,
-	type Person,
-} from "#/personality/profiles";
+import { describeProfiles, type Person } from "#/personality/profiles";
 import { buildSystem, buildUserPrompt } from "#/personality/prompt";
-import { AI_MESSAGES } from "#/personality/prompts";
 import {
 	generateCandidates,
 	generateCandidatesTogether,
 	pickBest,
 } from "#/personality/reply";
-import {
-	jitterTaste,
-	loadTaste,
-	strongDials,
-	withOverrides,
-} from "#/personality/taste";
+import { jitterTaste, strongDials } from "#/personality/taste";
 
 const CONCURRENCY = 6;
 const BOT_NAME = /^(bot|guttasjefen)$/i;
+
+await refreshSettings();
 
 const { values, positionals } = parseArgs({
 	allowPositionals: true,
 	allowNegative: true,
 	options: {
 		runs: { type: "string", short: "n", default: "20" },
-		config: { type: "string", short: "c", default: PERSONALITY_CONFIG_DIR },
 		count: { type: "string", multiple: true, default: [] },
 		profiles: { type: "boolean", default: false },
-		// Its made-up life from lore.md and data/lore.json, --no-lore to leave it out
+		// Its made-up life from lore.md and the database, --no-lore to leave it out
 		lore: { type: "boolean", default: true },
 		"show-prompt": { type: "boolean", default: false },
 		quiet: { type: "boolean", short: "q", default: false },
 		temperature: { type: "string", short: "t" },
-		jitter: { type: "string", short: "j", default: String(DIAL_JITTER) },
-		"best-of": { type: "string", short: "b", default: String(BEST_OF) },
+		jitter: {
+			type: "string",
+			short: "j",
+			default: String(tunables().reply.dialJitter),
+		},
+		"best-of": {
+			type: "string",
+			short: "b",
+			default: String(tunables().reply.bestOf),
+		},
 		verbose: { type: "boolean", short: "v", default: false },
 		separate: { type: "boolean", default: false },
 		dial: { type: "string", short: "d", multiple: true, default: [] },
-		// on/off overrides "enabled" in taste.json for this run
+		// on/off overrides "enabled" in the taste for this run
 		taste: { type: "string" },
 	},
 });
@@ -91,7 +83,7 @@ function parseScenario(text: string): Line[] {
 async function loadScenario(arg: string | undefined) {
 	if (!arg) {
 		console.error(
-			"Usage: pnpm test:prompt <scenario file | message> [-n 20] [-t temperature] [-b best-of] [-d dial=value ...] [--taste on|off] [-j jitter] [--separate] [-v] [--count regex] [--config dir] [--profiles] [--no-lore] [--show-prompt] [-q]",
+			"Usage: pnpm test:prompt <scenario file | message> [-n 20] [-t temperature] [-b best-of] [-d dial=value ...] [--taste on|off] [-j jitter] [--separate] [-v] [--count regex] [--profiles] [--no-lore] [--show-prompt] [-q]",
 		);
 		process.exit(1);
 	}
@@ -107,16 +99,16 @@ async function loadScenario(arg: string | undefined) {
 async function tasteFor(dials: string[], mode: string | undefined) {
 	if (mode !== undefined && mode !== "on" && mode !== "off")
 		throw new Error(`--taste must be on or off, got "${mode}"`);
-	const taste = await loadTaste(values.config);
+	const taste = await loadTaste(db);
 	if (!taste) {
 		if (dials.length || mode === "on")
-			throw new Error("No taste.json yet, run pnpm distill:taste first");
+			throw new Error("No taste yet, run pnpm distill:taste first");
 		return null;
 	}
 	if (mode === "off" || (mode === undefined && !taste.enabled)) {
 		if (dials.length)
 			throw new Error(
-				"The dial system is off (taste.json or --taste off), so --dial does nothing. Add --taste on",
+				"The dial system is off (taste or --taste off), so --dial does nothing. Add --taste on",
 			);
 		return null;
 	}
@@ -136,7 +128,7 @@ async function tasteFor(dials: string[], mode: string | undefined) {
 }
 
 async function profilesFor(lines: Line[]) {
-	const all = values.profiles ? await loadProfiles() : {};
+	const all = values.profiles ? await loadProfiles(db) : {};
 	const people = new Map<string, Person>();
 	for (const line of lines.filter((l) => !l.bot)) {
 		const name = line.name.replace(/\s*\(.*\)$/, "");
@@ -170,13 +162,13 @@ const speaker = (i: number) =>
 		.filter((l) => !l.bot)
 		.at(-1)?.name;
 const shownOwn = new Set([
-	...own.slice(-OWN_REPLIES_SHOWN),
+	...own.slice(-tunables().chat.ownRepliesShown),
 	...own.filter((l) => speaker(lines.indexOf(l)) === last.name),
 ]);
-const recentOwn = own.slice(-OWN_REPLIES_SHOWN);
+const recentOwn = own.slice(-tunables().chat.ownRepliesShown);
 const formatted = lines.map((l) => ({
 	l,
-	line: `[${l.time}] ${l.bot ? "Guttasjefen (deg)" : l.name}: ${l.bot && !shownOwn.has(l) ? AI_MESSAGES.OWN_REPLY_PLACEHOLDER : l.text}`,
+	line: `[${l.time}] ${l.bot ? "Guttasjefen (deg)" : l.name}: ${l.bot && !shownOwn.has(l) ? prompts().ownReplyPlaceholder : l.text}`,
 }));
 const transcript = formatted.map(({ line }) => line).join("\n");
 const recent = recentOwn.map((l) => l.text);
@@ -187,7 +179,7 @@ const others = formatted
 const name = last.name.replace(/\s*\(.*\)$/, "");
 const profiles = await profilesFor(lines);
 const taste = await tasteFor(values.dial, values.taste);
-const lore = values.lore ? await describeLore(transcript, values.config) : "";
+const lore = values.lore ? await describeLore(transcript) : "";
 
 const bestOf = Number(values["best-of"]);
 const together = !values.separate && bestOf > 1;
@@ -197,7 +189,6 @@ if (values["show-prompt"]) {
 		profiles,
 		taste,
 		lore,
-		configDir: values.config,
 	});
 	const prompt = buildUserPrompt({
 		transcript,
@@ -205,14 +196,14 @@ if (values["show-prompt"]) {
 		content: last.text,
 		count: together ? bestOf : 1,
 		taste: taste,
-		acceptClaims: Math.random() < CLAIM_ACCEPT_CHANCE,
+		acceptClaims: Math.random() < tunables().chat.claimAcceptChance,
 	});
 	console.log(`=== SYSTEM ===\n${system}\n\n=== USER ===\n${prompt}\n`);
 }
 
 const temperature = values.temperature
 	? Number(values.temperature)
-	: REPLY_OPTIONS.temperature;
+	: tunables().reply.temperature;
 console.log(
 	taste
 		? `Taste: ${Object.entries(taste.dials)
@@ -223,7 +214,7 @@ console.log(
 		: "Taste: off (random examples, no dials)",
 );
 console.log(
-	`Running ${runs}× against "${last.text}" with ${values.config}/ at temperature ${temperature}, best of ${bestOf}${together ? " (one call)" : ""}\n`,
+	`Running ${runs}× against "${last.text}" at temperature ${temperature}, best of ${bestOf}${together ? " (one call)" : ""}\n`,
 );
 
 let printed = 0;
@@ -233,12 +224,11 @@ const results = await mapLimit(
 	CONCURRENCY,
 	async () => {
 		const wobbled = jitterTaste(taste, Number(values.jitter));
-		const acceptClaims = Math.random() < CLAIM_ACCEPT_CHANCE;
+		const acceptClaims = Math.random() < tunables().chat.claimAcceptChance;
 		const system = await buildSystem({
 			profiles,
 			taste: wobbled,
 			lore,
-			configDir: values.config,
 		});
 		const prompt = buildUserPrompt({
 			transcript,
@@ -308,10 +298,11 @@ if (runaways.length)
 	console.log(`loops / hit token cap: ${pct(runaways.length)}`);
 
 const fromChat = new Set(lines.flatMap((l) => [...words(l.text)]));
+const common = new Set(tunables().words.common);
 const counts = new Map<string, number>();
 for (const r of ok) {
 	for (const w of words(r.reply)) {
-		if (w.length < 4 || COMMON_WORDS.has(w)) continue;
+		if (w.length < 4 || common.has(w)) continue;
 		counts.set(w, (counts.get(w) ?? 0) + 1);
 	}
 }
@@ -335,34 +326,31 @@ for (const pattern of values.count) {
 async function rateReplies() {
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 	const good = await rl.question(
-		"\nFavourites to add to examples.txt (e.g. 3,7,12, empty to skip): ",
+		"\nFavourites to add to the liked examples (e.g. 3,7,12, empty to skip): ",
 	);
 	const bad = await rl.question(
-		"Bad ones to add to disliked.txt (empty to skip): ",
+		"Bad ones to add to the disliked examples (empty to skip): ",
 	);
 	rl.close();
-	await saveRated(good, "examples.txt");
-	await saveRated(bad, "disliked.txt");
+	await saveRated(good, true);
+	await saveRated(bad, false);
 }
 
-async function saveRated(answer: string, file: string) {
+async function saveRated(answer: string, liked: boolean) {
 	const numbers = new Set(
 		answer
 			.split(/[\s,]+/)
 			.filter(Boolean)
 			.map(Number),
 	);
-	const path = join(values.config, file);
-	const existing = await readFile(path, "utf8").catch(() => "");
-	const added = ok
+	const rated = ok
 		.filter((r) => numbers.has(r.number) && r.reply)
-		.map((r) => `${last.text} → ${r.reply}`)
-		.filter((line) => !existing.includes(line));
-	if (added.length === 0) return;
-
-	const separator = existing && !existing.endsWith("\n") ? "\n" : "";
-	await appendFile(path, `${separator}${added.join("\n")}\n`);
-	console.log(`Added ${added.length} to ${path}`);
+		.map((r) => `${last.text} → ${r.reply}`);
+	const added = await addExamples(db, rated, liked);
+	if (added) {
+		console.log(`Added ${added} ${liked ? "liked" : "disliked"} examples`);
+	}
 }
 
 if (process.stdin.isTTY && !values.quiet && ok.length) await rateReplies();
+await db.$client.end();

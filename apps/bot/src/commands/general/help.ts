@@ -1,7 +1,7 @@
 import { describeChannels } from "#/bot/channels";
 import { commands } from "#/commands";
-import { CMD_PREFIX, MUSIC_CHANNEL_KEYWORDS } from "#/config/bot";
-import { CHAT_HELP } from "#/personality";
+import { tunables } from "#/config/settings";
+import { chatHelp } from "#/personality";
 import type { Command } from "#/types";
 import { formatArgument } from "#/ui/format";
 
@@ -16,19 +16,19 @@ export const help: Command = {
 
 			const arg = cmd.argument ? ` \`${formatArgument(cmd.argument)}\`` : "";
 			const aliases = cmd.aliases?.length
-				? ` (${cmd.aliases.map((alias) => `${CMD_PREFIX}${alias}`).join(", ")})`
+				? ` (${cmd.aliases.map((alias) => `${tunables().commands.prefix}${alias}`).join(", ")})`
 				: "";
 
-			return `**${CMD_PREFIX}${cmd.name}**${arg}${aliases}\n-# ${cmd.description}`;
+			return `**${tunables().commands.prefix}${cmd.name}**${arg}${aliases}\n-# ${cmd.description}`;
 		});
 
 		lines.push("\nEvery command also works as a slash command, e.g. `/play`.");
 
 		lines.push(
-			`Prefix commands only work in ${describeChannels(MUSIC_CHANNEL_KEYWORDS)}.`,
+			`Prefix commands only work in ${describeChannels(tunables().commands.musicChannelKeywords)}.`,
 		);
 
-		lines.push(CHAT_HELP);
+		lines.push(chatHelp());
 
 		await ctx.reply(lines.join("\n \n"));
 	},

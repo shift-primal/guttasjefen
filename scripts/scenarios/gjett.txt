@@ -1,0 +1,4 @@
+# Picture of cat food; it talked about Kasper in third person while replying to him
+[18:00] Kokain Kasper: Gjett hva det blir til middag i dag [bilde]
+[18:00] bot: hva er det du egentlig vil at vi skal gjette her kasper
+[18:01] Kokain Kasper (svarer deg): Jeg sa jo det, gjett hva jeg skal spise til middag

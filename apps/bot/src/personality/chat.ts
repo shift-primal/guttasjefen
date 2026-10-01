@@ -1,36 +1,22 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import { clearProfile, loadActiveTaste, loadProfiles } from "@guttasjefen/db";
 import type { FilePart, TextPart } from "ai";
 import type { Message } from "discord.js";
 import { channelMatches, describeChannels } from "#/bot/channels";
-import { CMD_PREFIX } from "#/config/bot";
+import { prompts, tunables } from "#/config/settings";
+import { db } from "#/db";
 import { preview } from "#/helpers/discord";
 import { elapsed } from "#/helpers/time";
-import {
-	AI_CHANNEL_KEYWORDS,
-	BEST_OF,
-	CLAIM_ACCEPT_CHANCE,
-	HISTORY_LIMIT,
-	LATER_LIMIT,
-	LORE_CONTEXT_LINES,
-	OWN_REPLIES_SHOWN,
-	RANDOM_REPLY_CHANCE,
-	RANDOM_REPLY_CHANNEL_KEYWORDS,
-	THREAD_LIMIT,
-	TURN_WAIT_LIMIT_MS,
-	TYPING_REFRESH_MS,
-} from "#/personality/config";
+import { TYPING_REFRESH_MS } from "#/personality/config";
 import { describeLore, updateLore } from "#/personality/lore";
 import {
-	clearProfile,
 	describeProfiles,
-	loadProfiles,
 	maybeUpdateProfiles,
 	type Person,
 } from "#/personality/profiles";
 import { buildSystem, buildUserPrompt } from "#/personality/prompt";
-import { AI_MESSAGES, ANSWERING_MARKER } from "#/personality/prompts";
 import { generateCandidatesTogether, pickBest } from "#/personality/reply";
-import { jitterTaste, loadActiveTaste, strongDials } from "#/personality/taste";
+import { jitterTaste, strongDials } from "#/personality/taste";
 import {
 	authorName,
 	describeMessageContent,
@@ -40,7 +26,8 @@ import {
 } from "#/personality/transcript";
 import type { Command } from "#/types";
 
-export const CHAT_HELP = `**Chat with me:** tag me or reply to one of my messages in any channel. In ${describeChannels(AI_CHANNEL_KEYWORDS)} I reply to every message, no tag needed, and in ${describeChannels(RANDOM_REPLY_CHANNEL_KEYWORDS)} I butt in every now and then.`;
+export const chatHelp = () =>
+	`**Chat with me:** tag me or reply to one of my messages in any channel. In ${describeChannels(tunables().chat.aiChannelKeywords)} I reply to every message, no tag needed, and in ${describeChannels(tunables().chat.randomReplyChannelKeywords)} I butt in every now and then.`;
 
 type Channel = Message<true>["channel"];
 
@@ -76,14 +63,14 @@ function keepTyping(channel: Channel) {
 }
 
 // Each reply waits for the one before it in the channel so it can see it,
-// but only up to TURN_WAIT_LIMIT_MS, so a burst of messages doesn't pile up
+// but only up to the turn wait limit, so a burst of messages doesn't pile up
 const queues = new Map<string, Promise<void>>();
 
 function inTurn(channel: Channel, task: () => Promise<void>) {
 	const stopTyping = keepTyping(channel);
 	const previous = queues.get(channel.id);
 	const turn = previous
-		? Promise.race([previous, sleep(TURN_WAIT_LIMIT_MS)])
+		? Promise.race([previous, sleep(tunables().chat.turnWaitLimitMs)])
 		: Promise.resolve();
 	const next: Promise<void> = turn
 		.then(task)
@@ -104,9 +91,13 @@ export async function maybeReply(message: Message<true>) {
 	});
 	const { name } = message.channel;
 	const randomReply =
-		channelMatches(name, RANDOM_REPLY_CHANNEL_KEYWORDS) &&
-		Math.random() < RANDOM_REPLY_CHANCE;
-	if (mentioned || channelMatches(name, AI_CHANNEL_KEYWORDS) || randomReply) {
+		channelMatches(name, tunables().chat.randomReplyChannelKeywords) &&
+		Math.random() < tunables().chat.randomReplyChance;
+	if (
+		mentioned ||
+		channelMatches(name, tunables().chat.aiChannelKeywords) ||
+		randomReply
+	) {
 		const queuedAt = performance.now();
 		await inTurn(message.channel, () => replyWithAI(message, queuedAt));
 	}
@@ -130,17 +121,19 @@ async function replyWithAI(message: Message<true>, queuedAt: number) {
 
 	const [before, after] = await Promise.all([
 		message.channel.messages.fetch({
-			limit: HISTORY_LIMIT,
+			limit: tunables().chat.historyLimit,
 			before: message.id,
 		}),
 		// Anything sent while this reply waited its turn, like its replies to others
-		message.channel.messages.fetch({ limit: LATER_LIMIT, after: message.id }),
+		message.channel.messages.fetch({
+			limit: tunables().chat.laterLimit,
+			after: message.id,
+		}),
 	]);
 	const newestFirst = [...before.values()];
 	const reset = newestFirst.findIndex(
 		(m) =>
-			m.author.id === botId &&
-			m.content.startsWith(AI_MESSAGES.CHAT_RESET_MARKER),
+			m.author.id === botId && m.content.startsWith(prompts().chatResetMarker),
 	);
 	const earlier = (reset === -1 ? newestFirst : newestFirst.slice(0, reset))
 		.reverse()
@@ -157,7 +150,7 @@ async function replyWithAI(message: Message<true>, queuedAt: number) {
 	// Only the bot's chat replies count as its own; music and command output doesn't
 	const commandIds = new Set(
 		all
-			.filter(({ m }) => m.content.startsWith(CMD_PREFIX))
+			.filter(({ m }) => m.content.startsWith(tunables().commands.prefix))
 			.map(({ m }) => m.id),
 	);
 	const own = all
@@ -182,7 +175,7 @@ async function replyWithAI(message: Message<true>, queuedAt: number) {
 			: undefined;
 	// What the judge checks for repeats: its latest replies, and the one they answer
 	const recentOwn = new Set([
-		...own.slice(-OWN_REPLIES_SHOWN),
+		...own.slice(-tunables().chat.ownRepliesShown),
 		...own.filter((m) => m.id === replied?.id),
 	]);
 	// Everything it said in the conversation it's in stays readable, older replies are hidden
@@ -208,7 +201,9 @@ async function replyWithAI(message: Message<true>, queuedAt: number) {
 	const answering = message !== log.at(-1)?.m;
 	const transcript = lines
 		.map(({ m, line }) =>
-			answering && m === message ? `${line} ${ANSWERING_MARKER}` : line,
+			answering && m === message
+				? `${line} ${prompts().answeringMarker}`
+				: line,
 		)
 		.join("\n");
 	const fromPeople = lines.filter(({ m }) => m.author.id !== botId);
@@ -233,16 +228,16 @@ async function replyWithAI(message: Message<true>, queuedAt: number) {
 		}
 	}
 
-	const profiles = describeProfiles(await loadProfiles(), people);
-	const taste = jitterTaste(await loadActiveTaste());
+	const profiles = describeProfiles(await loadProfiles(db), people);
+	const taste = jitterTaste(await loadActiveTaste(db));
 	const lore = await describeLore(`${thread}\n${transcript}`);
-	const acceptClaims = Math.random() < CLAIM_ACCEPT_CHANCE;
+	const acceptClaims = Math.random() < tunables().chat.claimAcceptChance;
 	const system = await buildSystem({ profiles, taste, lore });
 	const prompt = buildUserPrompt({
 		transcript,
 		name: author,
 		content: contentDescription,
-		count: BEST_OF,
+		count: tunables().reply.bestOf,
 		taste,
 		thread,
 		acceptClaims,
@@ -280,7 +275,7 @@ async function replyWithAI(message: Message<true>, queuedAt: number) {
 		usable.length === 0 &&
 		candidates.some((c) => c.finishReason === "content-filter")
 	) {
-		await message.reply(AI_MESSAGES.CONTENT_FILTER_REPLY);
+		await message.reply(prompts().contentFilterReply);
 		return;
 	}
 
@@ -297,7 +292,7 @@ async function replyWithAI(message: Message<true>, queuedAt: number) {
 		acceptClaims,
 	});
 	const generateTime = elapsed(generateStart);
-	const reply = usable[picked] || AI_MESSAGES.FALLBACK_REPLY;
+	const reply = usable[picked] || prompts().fallbackReply;
 
 	await message.reply({
 		content: reply.slice(0, 2000),
@@ -311,7 +306,7 @@ async function replyWithAI(message: Message<true>, queuedAt: number) {
 	if (usable[picked]) {
 		const context = [
 			thread,
-			...lines.slice(-LORE_CONTEXT_LINES).map(({ line }) => line),
+			...lines.slice(-tunables().lore.contextLines).map(({ line }) => line),
 		];
 		void updateLore(context.filter(Boolean).join("\n"), reply);
 	}
@@ -321,7 +316,10 @@ async function replyWithAI(message: Message<true>, queuedAt: number) {
 async function replyChain(message: Message<true>) {
 	const chain: Message<true>[] = [];
 	let current = message;
-	while (chain.length < THREAD_LIMIT && current.reference?.messageId) {
+	while (
+		chain.length < tunables().chat.threadLimit &&
+		current.reference?.messageId
+	) {
 		const parent = await current.fetchReference().catch(() => null);
 		if (!parent) break;
 		chain.unshift(parent);
@@ -336,11 +334,11 @@ export const reset: Command = {
 		"Make the AI forget this channel's chat history and its notes on you",
 	slashOnly: true,
 	async run(ctx) {
-		const cleared = await clearProfile(ctx.member.id);
+		const cleared = await clearProfile(db, ctx.member.id);
 		await ctx.reply(
 			cleared
-				? `${AI_MESSAGES.CHAT_RESET_MARKER} Notes on ${ctx.member.displayName} wiped too.`
-				: AI_MESSAGES.CHAT_RESET_MARKER,
+				? `${prompts().chatResetMarker} Notes on ${ctx.member.displayName} wiped too.`
+				: prompts().chatResetMarker,
 		);
 	},
 };

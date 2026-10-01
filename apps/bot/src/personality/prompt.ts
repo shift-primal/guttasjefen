@@ -1,38 +1,19 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { readOptional } from "#/helpers/fs";
-import { pickRandom } from "#/helpers/random";
-import {
-	DIAL_LIMIT,
-	EXAMPLES_PER_REPLY,
-	PERSONALITY_CONFIG_DIR,
-} from "#/personality/config";
-import {
-	CLAIM_INSTRUCTION,
-	EXAMPLES_SECTION_HEADER,
-	LENGTH_INSTRUCTION,
-	LORE_SECTION_HEADER,
-	STRONG_DIALS_INSTRUCTION,
-	TASTE_SECTION_HEADER,
-	USER_PROMPT_INSTRUCTIONS,
-} from "#/personality/prompts";
+import { loadExamples } from "@guttasjefen/db";
 import {
 	clampDial,
-	describeTaste,
-	hasStrongLengthDial,
-	loadTags,
-	strongDials,
+	DIAL_LIMIT,
 	type Tags,
 	type Taste,
+} from "@guttasjefen/db/settings";
+import { personality, prompts, tunables } from "#/config/settings";
+import { db } from "#/db";
+import { pickRandom } from "#/helpers/random";
+import { fill } from "#/helpers/text";
+import {
+	describeTaste,
+	hasStrongLengthDial,
+	strongDials,
 } from "#/personality/taste";
-
-// One "message → reply" per line in examples.txt and disliked.txt, # for comments
-export function poolEntries(text: string): string[] {
-	return text
-		.split("\n")
-		.map((line) => line.trim())
-		.filter((line) => line && !line.startsWith("#"));
-}
 
 // The message half of "message → reply", so two replies to the same message count as one
 function exampleMessage(entry: string): string {
@@ -114,43 +95,51 @@ export async function buildSystem({
 	profiles,
 	taste,
 	lore = "",
-	configDir = PERSONALITY_CONFIG_DIR,
 }: {
 	profiles: string;
 	taste: Taste | null;
 	// Its life so far, from describeLore
 	lore?: string;
-	configDir?: string;
 }) {
-	const [persona, rules, examples, tags] = await Promise.all([
-		readFile(join(configDir, "persona.md"), "utf8"),
-		readFile(join(configDir, "chat-rules.md"), "utf8"),
-		readOptional(join(configDir, "examples.txt")),
-		loadTags(configDir),
-	]);
-
-	const entries = poolEntries(examples);
+	const { persona, chatRules } = personality();
+	const examples = await loadExamples(db, true);
+	const entries = examples.map(({ text }) => text);
+	const tags: Tags = Object.fromEntries(
+		examples.flatMap(({ text, tags }) => (tags ? [[text, tags]] : [])),
+	);
 	const shown = taste
-		? pickExamples(entries, tags, taste, EXAMPLES_PER_REPLY)
-		: pickDistinct(entries, EXAMPLES_PER_REPLY);
+		? pickExamples(entries, tags, taste, tunables().chat.examplesPerReply)
+		: pickDistinct(entries, tunables().chat.examplesPerReply);
 	const tasteText = describeTaste(taste);
 	const tasteSection = tasteText
-		? `${TASTE_SECTION_HEADER}\n\n${tasteText}`
+		? `${prompts().tasteHeader}\n\n${tasteText}`
 		: "";
 
 	const examplesSection = shown.length
-		? `${EXAMPLES_SECTION_HEADER}\n\n${shown.map(formatExample).join("\n")}`
+		? `${prompts().examplesHeader}\n\n${shown.map(formatExample).join("\n")}`
 		: "";
 
 	return [
 		persona.trim(),
-		rules.trim() + profiles,
-		lore ? `${LORE_SECTION_HEADER}\n\n${lore}` : "",
+		chatRules.trim() + profiles,
+		lore ? `${prompts().loreHeader}\n\n${lore}` : "",
 		tasteSection,
 		examplesSection,
 	]
 		.filter(Boolean)
 		.join("\n\n");
+}
+
+function claimInstruction(accept: boolean, count: number) {
+	const p = prompts();
+	if (accept) return count > 1 ? p.claimAcceptMulti : p.claimAcceptSingle;
+	return count > 1 ? p.claimRejectMulti : p.claimRejectSingle;
+}
+
+function strongDialsInstruction(dials: string[], count: number) {
+	const template =
+		count > 1 ? prompts().strongDialsMulti : prompts().strongDialsSingle;
+	return fill(template, { dials: dials.map((d) => `«${d}»`).join(", ") });
 }
 
 export function buildUserPrompt({
@@ -173,18 +162,20 @@ export function buildUserPrompt({
 	acceptClaims: boolean;
 }) {
 	const instruction =
-		count > 1
-			? USER_PROMPT_INSTRUCTIONS.multi(count)
-			: USER_PROMPT_INSTRUCTIONS.single;
+		count > 1 ? fill(prompts().replyMulti, { count }) : prompts().replySingle;
 	const strong = strongDials(taste);
 	return [
 		thread ? `Samtalen du er i, fra før chatloggen:\n${thread}` : "",
 		`Chatlogg:\n${transcript}`,
 		`Du svarer nå ${name}. Meldingen deres: ${content}`,
-		hasStrongLengthDial(taste) ? "" : LENGTH_INSTRUCTION(count),
+		hasStrongLengthDial(taste)
+			? ""
+			: count > 1
+				? prompts().lengthMulti
+				: prompts().lengthSingle,
 		instruction,
-		CLAIM_INSTRUCTION(acceptClaims, count),
-		strong.length ? STRONG_DIALS_INSTRUCTION(strong, count) : "",
+		claimInstruction(acceptClaims, count),
+		strong.length ? strongDialsInstruction(strong, count) : "",
 	]
 		.filter(Boolean)
 		.join("\n\n");

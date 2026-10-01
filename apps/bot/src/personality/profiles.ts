@@ -1,45 +1,14 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { loadProfiles, type Profiles, saveProfiles } from "@guttasjefen/db";
 import { generateText } from "ai";
+import { prompts, tunables } from "#/config/settings";
+import { db } from "#/db";
 import { parseJsonObject } from "#/helpers/text";
-import {
-	model,
-	PROFILE_UPDATE_MAX_TOKENS,
-	PROFILES_PATH,
-	UPDATE_PROFILES_EVERY,
-} from "#/personality/config";
-import {
-	PROFILE_UPDATE_SYSTEM,
-	PROFILES_SECTION_HEADER,
-} from "#/personality/prompts";
+import { chatModel } from "#/personality/config";
 
-export type Profile = { name: string; notes: string };
 export type Person = { name: string; username?: string };
-type Profiles = Record<string, Profile>;
 
 const repliesSinceUpdate = new Map<string, number>();
 let updating = false;
-
-export async function loadProfiles(): Promise<Profiles> {
-	try {
-		return JSON.parse(await readFile(PROFILES_PATH, "utf8"));
-	} catch {
-		return {};
-	}
-}
-
-async function saveProfiles(profiles: Profiles) {
-	await mkdir(dirname(PROFILES_PATH), { recursive: true });
-	await writeFile(PROFILES_PATH, JSON.stringify(profiles, null, "\t"));
-}
-
-export async function clearProfile(userId: string) {
-	const profiles = await loadProfiles();
-	if (!(userId in profiles)) return false;
-	delete profiles[userId];
-	await saveProfiles(profiles);
-	return true;
-}
 
 export function describeProfiles(
 	profiles: Profiles,
@@ -54,7 +23,7 @@ export function describeProfiles(
 		return `- ${name}${tag}${notes ? `: ${notes}` : ""}`;
 	});
 	return lines.length
-		? `\n\n${PROFILES_SECTION_HEADER}\n${lines.join("\n")}`
+		? `\n\n${prompts().profilesHeader}\n${lines.join("\n")}`
 		: "";
 }
 
@@ -65,12 +34,13 @@ export async function maybeUpdateProfiles(
 ) {
 	const count = (repliesSinceUpdate.get(channelId) ?? 0) + 1;
 	repliesSinceUpdate.set(channelId, count);
-	if (count < UPDATE_PROFILES_EVERY || updating || people.size === 0) return;
+	if (count < tunables().profiles.updateEvery || updating || people.size === 0)
+		return;
 	repliesSinceUpdate.set(channelId, 0);
 	updating = true;
 
 	try {
-		const profiles = await loadProfiles();
+		const profiles = await loadProfiles(db);
 		const current = [...people]
 			.map(
 				([id, { name }]) =>
@@ -79,22 +49,22 @@ export async function maybeUpdateProfiles(
 			.join("\n");
 
 		const { text } = await generateText({
-			model,
-			maxOutputTokens: PROFILE_UPDATE_MAX_TOKENS,
-			system: PROFILE_UPDATE_SYSTEM,
+			model: chatModel(),
+			maxOutputTokens: tunables().profiles.updateMaxTokens,
+			system: prompts().profileUpdateSystem,
 			prompt: `Nåværende notater:\n${current}\n\nNy chatlogg:\n${transcript}`,
 		});
 
 		const updates = parseJsonObject(text) as Record<string, unknown>;
-		const latest = await loadProfiles();
+		const changed: Profiles = {};
 		for (const [id, { name }] of people) {
 			const notes = updates[id];
 			if (typeof notes === "string" && notes.trim()) {
-				latest[id] = { name, notes: notes.trim() };
+				changed[id] = { name, notes: notes.trim() };
 			}
 		}
 
-		await saveProfiles(latest);
+		await saveProfiles(db, changed);
 	} catch (error) {
 		console.error("Profile update failed:", error);
 	} finally {

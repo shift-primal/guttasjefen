@@ -1,13 +1,7 @@
 import { type FilePart, generateText, type TextPart } from "ai";
+import { prompts, tunables } from "#/config/settings";
 import { pickRandom } from "#/helpers/random";
-import {
-	BEST_OF,
-	INSULT_TAIL_CHANCE,
-	JUDGE_MAX_TOKENS,
-	JUDGE_TEMPERATURE,
-	model,
-	REPLY_OPTIONS,
-} from "#/personality/config";
+import { chatModel } from "#/personality/config";
 import {
 	asksForFact,
 	asksSomething,
@@ -18,12 +12,6 @@ import {
 	startsWithYesNo,
 	talksAbout,
 } from "#/personality/filters";
-import {
-	JUDGE_CLAIM_NOTE,
-	JUDGE_LORE_LABEL,
-	JUDGE_STRONG_DIALS_LABEL,
-	JUDGE_SYSTEM,
-} from "#/personality/prompts";
 
 export type Candidate = { reply: string; finishReason: string };
 
@@ -42,14 +30,14 @@ function cleanReply(text: string): string {
 export async function generateCandidates(
 	system: string,
 	content: (TextPart | FilePart)[],
-	count = BEST_OF,
-	temperature: number = REPLY_OPTIONS.temperature,
+	count = tunables().reply.bestOf,
+	temperature = tunables().reply.temperature,
 ): Promise<Candidate[]> {
 	const results = await Promise.allSettled(
 		Array.from({ length: count }, () =>
 			generateText({
-				model,
-				...REPLY_OPTIONS,
+				model: chatModel(),
+				maxOutputTokens: tunables().reply.maxOutputTokens,
 				temperature,
 				system,
 				messages: [{ role: "user", content }],
@@ -67,12 +55,11 @@ export async function generateCandidates(
 export async function generateCandidatesTogether(
 	system: string,
 	content: (TextPart | FilePart)[],
-	temperature: number = REPLY_OPTIONS.temperature,
+	temperature = tunables().reply.temperature,
 ): Promise<Candidate[]> {
 	const { text, finishReason } = await generateText({
-		model,
-		...REPLY_OPTIONS,
-		maxOutputTokens: REPLY_OPTIONS.maxOutputTokens * BEST_OF,
+		model: chatModel(),
+		maxOutputTokens: tunables().reply.maxOutputTokens * tunables().reply.bestOf,
 		temperature,
 		system,
 		messages: [{ role: "user", content }],
@@ -113,7 +100,7 @@ export async function pickBest(
 		replies.map((_, i) => i),
 		(r) => sharesOpener(r, context.past),
 	);
-	const allowTail = Math.random() < INSULT_TAIL_CHANCE;
+	const allowTail = Math.random() < tunables().reply.insultTailChance;
 	const tails = allowTail ? fresh : keep(fresh, hasInsultTail);
 	// "hva heter han?" → "nei han heter per"
 	const facts = asksForFact(context.content)
@@ -145,17 +132,17 @@ async function judge(replies: string[], context: JudgeContext) {
 		? `Guttasjefens siste svar:\n${context.recent.map((r) => `- ${r}`).join("\n")}\n\n`
 		: "";
 	const lore = context.lore
-		? `${JUDGE_LORE_LABEL}\n${context.lore}\n\n${JUDGE_CLAIM_NOTE(context.acceptClaims)}\n\n`
+		? `${prompts().judgeLoreLabel}\n${context.lore}\n\n${context.acceptClaims ? prompts().judgeClaimAccept : prompts().judgeClaimReject}\n\n`
 		: "";
 	const strong = context.strongDials.length
-		? `${JUDGE_STRONG_DIALS_LABEL}\n${context.strongDials.map((d) => `- ${d}`).join("\n")}\n\n`
+		? `${prompts().judgeStrongDialsLabel}\n${context.strongDials.map((d) => `- ${d}`).join("\n")}\n\n`
 		: "";
 	try {
 		const { text } = await generateText({
-			model,
-			temperature: JUDGE_TEMPERATURE,
-			maxOutputTokens: JUDGE_MAX_TOKENS,
-			system: JUDGE_SYSTEM,
+			model: chatModel(),
+			temperature: tunables().reply.judgeTemperature,
+			maxOutputTokens: tunables().reply.judgeMaxTokens,
+			system: prompts().judgeSystem,
 			prompt: `Chatlogg:\n${context.transcript}${context.people}\n\n${lore}${recent}${strong}Siste melding, fra ${context.name}: ${context.content}\n\nSvar å velge mellom:\n${numbered}`,
 		});
 		const picked = Number(text.match(/best:\s*(\d+)/i)?.[1]);

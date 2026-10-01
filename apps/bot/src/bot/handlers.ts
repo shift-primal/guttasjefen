@@ -7,8 +7,8 @@ import {
 import { describeChannels, isMusicChannel } from "#/bot/channels";
 import { fromInteraction, fromMessage } from "#/bot/context";
 import { findCommand } from "#/commands";
-import { CMD_PREFIX, MUSIC_CHANNEL_KEYWORDS } from "#/config/bot";
 import { CONTROL_ID_PREFIX, QUEUE_ID_PREFIX } from "#/config/music";
+import { tunables } from "#/config/settings";
 import { channelName } from "#/helpers/discord";
 import { elapsed } from "#/helpers/time";
 import { DIALS_ID_PREFIX, handleDials, maybeReply } from "#/personality";
@@ -45,10 +45,10 @@ async function runCommand(
 }
 
 function parsePrefixed(content: string) {
-	if (!content.startsWith(CMD_PREFIX)) return null;
+	if (!content.startsWith(tunables().commands.prefix)) return null;
 
 	const [name = "", ...rest] = content
-		.slice(CMD_PREFIX.length)
+		.slice(tunables().commands.prefix.length)
 		.trim()
 		.split(/\s+/);
 	return { name, args: rest.join(" ") };
@@ -71,19 +71,19 @@ async function onMessage(message: Message) {
 
 	if (!command.anyChannel && !isMusicChannel(message.channel.name)) {
 		await ctx.reply(
-			`Commands can only be used in ${describeChannels(MUSIC_CHANNEL_KEYWORDS)}.`,
+			`Commands can only be used in ${describeChannels(tunables().commands.musicChannelKeywords)}.`,
 		);
 		return;
 	}
 
 	if (command.argument?.required && !ctx.args) {
 		await ctx.reply(
-			`Usage: ${CMD_PREFIX}${command.name} ${formatArgument(command.argument)}`,
+			`Usage: ${tunables().commands.prefix}${command.name} ${formatArgument(command.argument)}`,
 		);
 		return;
 	}
 
-	await runCommand(command, ctx, CMD_PREFIX);
+	await runCommand(command, ctx, tunables().commands.prefix);
 }
 
 export function registerHandlers(client: Client) {

@@ -1,4 +1,16 @@
 import {
+	loadTaste,
+	loadTunedTaste,
+	updateDialOverrides,
+} from "@guttasjefen/db";
+import {
+	clampDial,
+	DIAL_LIMIT,
+	DIAL_STEP,
+	type DialOverrides,
+	type Taste,
+} from "@guttasjefen/db/settings";
+import {
 	ActionRowBuilder,
 	ButtonBuilder,
 	type ButtonInteraction,
@@ -8,22 +20,10 @@ import {
 	type StringSelectMenuInteraction,
 } from "discord.js";
 import { refuse } from "#/commands/guards";
+import { tunables } from "#/config/settings";
+import { db } from "#/db";
 import { hasRole, preview } from "#/helpers/discord";
-import {
-	DEV_ROLE,
-	DIAL_JITTER,
-	DIAL_LIMIT,
-	DIAL_STEP,
-	DIALS_ID_PREFIX,
-} from "#/personality/config";
-import {
-	clampDial,
-	type DialOverrides,
-	loadTaste,
-	loadTunedTaste,
-	type Taste,
-	updateDialOverrides,
-} from "#/personality/taste";
+import { DIALS_ID_PREFIX } from "#/personality/config";
 import type { Command, CommandContext } from "#/types";
 
 const ACTIONS = [
@@ -134,7 +134,7 @@ function renderDials(base: Taste, tuned: Taste, requested?: string) {
 			`**${selected}**`,
 			`⬅️ ${dial.low}`,
 			`➡️ ${dial.high}`,
-			`-# Default ${formatDialValue(original)} · ±${DIAL_LIMIT} forces that end in every reply, anything in between wobbles ±${DIAL_JITTER} per reply`,
+			`-# Default ${formatDialValue(original)} · ±${DIAL_LIMIT} forces that end in every reply, anything in between wobbles ±${tunables().reply.dialJitter} per reply`,
 		);
 	}
 
@@ -202,19 +202,19 @@ function change(
 
 export async function handleDials(interaction: DialInteraction) {
 	if (!interaction.inCachedGuild()) return;
-	if (!hasRole(interaction.member, DEV_ROLE)) {
+	if (!hasRole(interaction.member, tunables().commands.devRole)) {
 		await interaction.reply({
-			content: `Only the **${DEV_ROLE}** role can change the dials.`,
+			content: `Only the **${tunables().commands.devRole}** role can change the dials.`,
 			flags: MessageFlags.Ephemeral,
 		});
 		return;
 	}
 
-	const base = await loadTaste();
-	const tuned = await loadTunedTaste();
+	const base = await loadTaste(db);
+	const tuned = await loadTunedTaste(db);
 	if (!base || !tuned) {
 		await interaction.update({
-			content: "The dials are gone (no taste.json).",
+			content: "The dials are gone (no taste in the database).",
 			components: [],
 		});
 		return;
@@ -230,9 +230,14 @@ export async function handleDials(interaction: DialInteraction) {
 	console.log(
 		`[dials ${action}${name ? ` ${name}` : ""}] ${interaction.member.displayName}`,
 	);
-	await updateDialOverrides(base, change(action, name, tuned));
+	await updateDialOverrides(
+		db,
+		base,
+		change(action, name, tuned),
+		`discord:${interaction.user.id}`,
+	);
 
-	const updated = (await loadTunedTaste()) ?? tuned;
+	const updated = (await loadTunedTaste(db)) ?? tuned;
 	await interaction.update(renderDials(base, updated, name));
 }
 
@@ -292,12 +297,15 @@ function applyArgs(
 }
 
 async function run(ctx: CommandContext) {
-	if (!hasRole(ctx.member, DEV_ROLE)) {
-		return refuse(ctx, `Only the **${DEV_ROLE}** role can use the dials.`);
+	if (!hasRole(ctx.member, tunables().commands.devRole)) {
+		return refuse(
+			ctx,
+			`Only the **${tunables().commands.devRole}** role can use the dials.`,
+		);
 	}
-	const base = await loadTaste();
+	const base = await loadTaste(db);
 	if (!base) {
-		return refuse(ctx, "No taste.json yet, run `pnpm distill:taste` first.");
+		return refuse(ctx, "No taste yet, run `pnpm distill:taste` first.");
 	}
 
 	const tokens = ctx.args.split(/[\s=]+/).filter(Boolean);
@@ -305,8 +313,11 @@ async function run(ctx: CommandContext) {
 	let touched: string | undefined;
 	if (tokens.length) {
 		try {
-			await updateDialOverrides(base, (overrides) =>
-				applyArgs(base, overrides, tokens),
+			await updateDialOverrides(
+				db,
+				base,
+				(overrides) => applyArgs(base, overrides, tokens),
+				`discord:${ctx.member.id}`,
 			);
 			const [first = "", second] = tokens;
 			if (first.toLowerCase() === "reset") {
@@ -319,7 +330,7 @@ async function run(ctx: CommandContext) {
 		}
 	}
 
-	const tuned = await loadTunedTaste();
+	const tuned = await loadTunedTaste(db);
 	if (!tuned) return;
 	const { content, components } = renderDials(base, tuned, touched);
 	await ctx.reply(content, { components });
@@ -328,7 +339,7 @@ async function run(ctx: CommandContext) {
 export const dials: Command = {
 	name: "dials",
 	aliases: ["dial", "taste"],
-	description: `Open the AI's humour dials panel (${DEV_ROLE} role only)`,
+	description: "Open the AI's humour dials panel (dev role only)",
 	argument: {
 		name: "settings",
 		description: `Quick set, e.g. "hostility 2 absurdity -1", "off", "reset" (empty just opens the panel)`,

@@ -1,5 +1,5 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { type FormEvent, useState } from "react";
+import { type SubmitEvent, useState } from "react";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
@@ -11,23 +11,13 @@ const safeRedirect = (value: unknown) =>
 		? value
 		: undefined;
 
-export const Route = createFileRoute("/login")({
-	validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
-		redirect: safeRedirect(search.redirect),
-	}),
-	beforeLoad: async ({ search }) => {
-		if (await getSession()) throw redirect({ href: search.redirect ?? "/" });
-	},
-	component: Login,
-});
-
-function Login() {
+const Login = () => {
 	const { redirect: redirectTo } = Route.useSearch();
 	const router = useRouter();
 	const [error, setError] = useState<string>();
 	const [pending, setPending] = useState(false);
 
-	const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
+	const onSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
 		event.preventDefault();
 		const form = new FormData(event.currentTarget);
 		setPending(true);
@@ -62,4 +52,14 @@ function Login() {
 			</form>
 		</main>
 	);
-}
+};
+
+export const Route = createFileRoute("/login")({
+	validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
+		redirect: safeRedirect(search.redirect),
+	}),
+	beforeLoad: async ({ search }) => {
+		if (await getSession()) throw redirect({ href: search.redirect ?? "/" });
+	},
+	component: Login,
+});

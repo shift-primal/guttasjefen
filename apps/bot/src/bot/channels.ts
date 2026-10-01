@@ -1,4 +1,4 @@
-import { MUSIC_CHANNEL_KEYWORDS } from "#/config/bot";
+import { tunables } from "#/config/settings";
 
 export function channelMatches(name: string, keywords: string[]) {
 	const lower = name.toLowerCase();
@@ -6,7 +6,7 @@ export function channelMatches(name: string, keywords: string[]) {
 }
 
 export function isMusicChannel(name: string) {
-	return channelMatches(name, MUSIC_CHANNEL_KEYWORDS);
+	return channelMatches(name, tunables().commands.musicChannelKeywords);
 }
 
 export function describeChannels(keywords: string[]) {

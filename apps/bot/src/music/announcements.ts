@@ -5,14 +5,14 @@ import {
 	type Track,
 	TrackSkipReason,
 } from "discord-player";
-import { LEAVE_ON_END_MS, MAX_TRACK_RETRIES } from "#/config/music";
+import { tunables } from "#/config/settings";
 import { createRetryTracker } from "#/music/retry";
 import type { QueueMetadata } from "#/types";
 import { buildControls } from "#/ui/controls";
 import { formatNowPlaying, formatTrack } from "#/ui/format";
 
 const nowPlaying = new Map<string, Message>();
-const retries = createRetryTracker(MAX_TRACK_RETRIES);
+const retries = createRetryTracker(() => tunables().music.maxTrackRetries);
 
 const retryKey = (queue: GuildQueue, track: Track) =>
 	`${queue.guild.id}:${track.id}`;
@@ -106,7 +106,7 @@ export function registerAnnouncements(player: Player) {
 	});
 
 	player.events.on("emptyQueue", async (queue) => {
-		const minutes = Math.round(LEAVE_ON_END_MS / 60_000);
+		const minutes = Math.round(tunables().music.leaveOnEndMs / 60_000);
 		await announce(
 			queue,
 			`✅ Queue finished. I'll leave in ${minutes} minutes if nothing else is queued.`,

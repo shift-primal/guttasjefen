@@ -1,10 +1,10 @@
-export function createRetryTracker(maxRetries: number) {
+export function createRetryTracker(maxRetries: () => number) {
 	const attempts = new Map<string, number>();
 
 	return {
 		shouldRetry(key: string): boolean {
 			const used = attempts.get(key) ?? 0;
-			if (used >= maxRetries) {
+			if (used >= maxRetries()) {
 				attempts.delete(key);
 				return false;
 			}

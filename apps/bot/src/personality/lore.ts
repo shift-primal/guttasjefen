@@ -1,64 +1,33 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { changeLore, forgetLore, type Lore, loadLore } from "@guttasjefen/db";
 import { generateText } from "ai";
 import { refuse } from "#/commands/guards";
+import { personality, prompts, tunables } from "#/config/settings";
+import { db } from "#/db";
 import { hasRole } from "#/helpers/discord";
-import { readOptional } from "#/helpers/fs";
 import { pickRandom } from "#/helpers/random";
 import { parseJsonObject } from "#/helpers/text";
-import {
-	COMMON_WORDS,
-	DEV_ROLE,
-	LORE_PATH,
-	LORE_SHOWN,
-	LORE_UPDATE_MAX_TOKENS,
-	model,
-	PERSONALITY_CONFIG_DIR,
-} from "#/personality/config";
+import { chatModel } from "#/personality/config";
 import { words } from "#/personality/filters";
-import { LORE_UPDATE_SYSTEM } from "#/personality/prompts";
 import type { Command, CommandContext } from "#/types";
 
-// "Nils" → "kompis fra bærum, flytta til oslo", plus "meg" for facts about itself
-export type Lore = Record<string, string>;
-
 const SELF = "meg";
-
-export async function loadLore(): Promise<Lore> {
-	try {
-		return JSON.parse(await readFile(LORE_PATH, "utf8"));
-	} catch {
-		return {};
-	}
-}
-
-async function saveLore(lore: Lore) {
-	await mkdir(dirname(LORE_PATH), { recursive: true });
-	await writeFile(LORE_PATH, `${JSON.stringify(lore, null, "\t")}\n`);
-}
-
-export async function forgetLore(key: string) {
-	const lore = await loadLore();
-	const found = Object.keys(lore).find(
-		(k) => k.toLowerCase() === key.toLowerCase(),
-	);
-	if (!found) return null;
-	delete lore[found];
-	await saveLore(lore);
-	return found;
-}
 
 // Words that point at an entry: its name, and the rarer words in its notes ("bærum")
 function markers(key: string, notes: string) {
 	const fromKey = [...words(key)].filter((w) => w.length >= 3);
+	const common = new Set(tunables().words.common);
 	const fromNotes = [...words(notes)].filter(
-		(w) => w.length >= 5 && !COMMON_WORDS.has(w),
+		(w) => w.length >= 5 && !common.has(w),
 	);
 	return [...fromKey, ...fromKey, ...fromNotes];
 }
 
 // "meg" always, then the entries the chat mentions most, then random ones to fill up
-export function selectLore(lore: Lore, text: string, limit = LORE_SHOWN) {
+export function selectLore(
+	lore: Lore,
+	text: string,
+	limit = tunables().lore.shown,
+) {
 	const said = words(text);
 	const entries = Object.entries(lore).filter(([key]) => key !== SELF);
 	const scored = pickRandom(entries, entries.length)
@@ -81,14 +50,9 @@ function formatEntries(entries: { key: string; notes: string }[]) {
 }
 
 // Its life for the prompt: lore.md as written, then what it has made up since
-export async function describeLore(
-	text: string,
-	configDir = PERSONALITY_CONFIG_DIR,
-) {
-	const [seed, lore] = await Promise.all([
-		readOptional(join(configDir, "lore.md")),
-		loadLore(),
-	]);
+export async function describeLore(text: string) {
+	const seed = personality().lore;
+	const lore = await loadLore(db);
 	const learned = formatEntries(selectLore(lore, text));
 	return [seed.trim(), learned].filter(Boolean).join("\n\n");
 }
@@ -103,7 +67,7 @@ export function updateLore(context: string, reply: string) {
 
 async function learnFrom(context: string, reply: string) {
 	try {
-		const lore = await loadLore();
+		const lore = await loadLore(db);
 		const shown = selectLore(lore, `${context} ${reply}`);
 		const others = Object.keys(lore).filter(
 			(key) => !shown.some((entry) => entry.key === key),
@@ -116,10 +80,10 @@ async function learnFrom(context: string, reply: string) {
 			.join("\n");
 
 		const { text } = await generateText({
-			model,
+			model: chatModel(),
 			temperature: 0,
-			maxOutputTokens: LORE_UPDATE_MAX_TOKENS,
-			system: LORE_UPDATE_SYSTEM,
+			maxOutputTokens: tunables().lore.updateMaxTokens,
+			system: prompts().loreUpdateSystem,
 			prompt: `Kjent om livet hans:\n${known}\n\nChatten:\n${context}\n\nSvaret han nettopp sendte: ${reply}`,
 		});
 
@@ -132,17 +96,16 @@ async function learnFrom(context: string, reply: string) {
 		);
 		if (changes.length === 0) return;
 
-		const latest = await loadLore();
-		for (const [key, notes] of changes) {
-			if (notes === null) {
-				delete latest[key.trim()];
-				console.log(`[lore] ${key.trim()} removed`);
-			} else {
-				latest[key.trim()] = notes.trim();
-				console.log(`[lore] ${key.trim()}: ${notes.trim()}`);
-			}
+		const trimmed = changes.map(([key, notes]): [string, string | null] => [
+			key.trim(),
+			notes?.trim() ?? null,
+		]);
+		await changeLore(db, trimmed);
+		for (const [key, notes] of trimmed) {
+			console.log(
+				notes === null ? `[lore] ${key} removed` : `[lore] ${key}: ${notes}`,
+			);
 		}
-		await saveLore(latest);
 	} catch (error) {
 		console.error("Lore update failed:", error);
 	}
@@ -152,8 +115,11 @@ async function learnFrom(context: string, reply: string) {
 const LIST_LIMIT = 1700;
 
 async function run(ctx: CommandContext) {
-	if (!hasRole(ctx.member, DEV_ROLE)) {
-		return refuse(ctx, `Only the **${DEV_ROLE}** role can use the lore.`);
+	if (!hasRole(ctx.member, tunables().commands.devRole)) {
+		return refuse(
+			ctx,
+			`Only the **${tunables().commands.devRole}** role can use the lore.`,
+		);
 	}
 
 	const [action, ...rest] = ctx.args.split(/\s+/).filter(Boolean);
@@ -162,7 +128,7 @@ async function run(ctx: CommandContext) {
 		if (action.toLowerCase() !== "forget" || !key) {
 			return refuse(ctx, "Usage: `lore` or `lore forget <name>`.");
 		}
-		const forgotten = await forgetLore(key);
+		const forgotten = await forgetLore(db, key);
 		return ctx.reply(
 			forgotten
 				? `Forgot **${forgotten}**.`
@@ -170,7 +136,7 @@ async function run(ctx: CommandContext) {
 		);
 	}
 
-	const entries = Object.entries(await loadLore());
+	const entries = Object.entries(await loadLore(db));
 	const lines: string[] = [];
 	let length = 0;
 	for (const [key, notes] of entries) {
@@ -184,7 +150,7 @@ async function run(ctx: CommandContext) {
 		[
 			`🧠 **Its life so far** · ${entries.length} made up while chatting, plus lore.md`,
 			...lines,
-			hidden ? `…and ${hidden} more in ${LORE_PATH}` : "",
+			hidden ? `…and ${hidden} more` : "",
 			"-# `lore forget <name>` removes one",
 		]
 			.filter(Boolean)
@@ -194,7 +160,7 @@ async function run(ctx: CommandContext) {
 
 export const lore: Command = {
 	name: "lore",
-	description: `Show the life the AI has made up for itself (${DEV_ROLE} role only)`,
+	description: "Show the life the AI has made up for itself (dev role only)",
 	argument: {
 		name: "action",
 		description: `"forget <name>" removes something from it (empty lists it all)`,

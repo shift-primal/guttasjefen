@@ -1,4 +1,4 @@
-import { COMMON_WORDS, OPENER_WORDS } from "#/personality/config";
+import { tunables } from "#/config/settings";
 
 export function words(text: string): Set<string> {
 	return new Set(text.toLowerCase().match(/[\p{L}\d]+/gu) ?? []);
@@ -8,7 +8,7 @@ export function reusedWords(
 	reply: string,
 	recent: string[],
 	others: string,
-	commonWords: Set<string> = COMMON_WORDS,
+	commonWords = new Set(tunables().words.common),
 ): string[] {
 	const own = words(recent.join(" "));
 	const theirs = words(others);
@@ -17,7 +17,7 @@ export function reusedWords(
 	);
 }
 
-function opener(text: string, count = OPENER_WORDS): string {
+function opener(text: string, count = tunables().reply.openerWords): string {
 	return (text.toLowerCase().match(/[\p{L}\d]+/gu) ?? [])
 		.slice(0, count)
 		.join(" ");
@@ -63,29 +63,16 @@ export function talksAbout(reply: string, name: string): boolean {
 	);
 }
 
-const PREPOSITIONS = new Set(
-	"i på med til fra av for om hos mot under over etter ved uten".split(" "),
-);
-
-const TAIL_FILLERS = new Set(
-	"igjen da eller nå også heller lenger altså liksom engang".split(" "),
-);
-
-// "arne idiot", "han er på jobb idiot ikke her": the insult on its own, no "din"
-const BARE_INSULTS = new Set(
-	"idiot idioten dust tulling taper loser fiasko klovn tosk noob".split(" "),
-);
-
-const PART_OF_SENTENCE = new Set(
-	"en ei et som den det er var blir ble like for av med til fra".split(" "),
-);
-
 export function hasInsultTail(reply: string): boolean {
+	const lists = tunables().words;
+	const bareInsults = new Set(lists.bareInsults);
+	const partOfSentence = new Set(lists.partOfSentence);
+	const prepositions = new Set(lists.prepositions);
+	const tailFillers = new Set(lists.tailFillers);
 	const w = reply.toLowerCase().match(/[\p{L}\d-]+/gu) ?? [];
 	// "han jobber med en idiot" says who someone is, it isn't tacked on
 	const tacked = (i: number) =>
-		BARE_INSULTS.has(w[i] as string) &&
-		!PART_OF_SENTENCE.has(w[i - 1] as string);
+		bareInsults.has(w[i] as string) && !partOfSentence.has(w[i - 1] as string);
 	if (w.length > 1 && tacked(w.length - 1)) return true;
 	if (w.length <= 8 && w.slice(1, -1).some((_, j) => tacked(j + 1)))
 		return true;
@@ -94,10 +81,10 @@ export function hasInsultTail(reply: string): boolean {
 		const before = w[i - 1];
 		if (i >= 1 && ["din", "ditt", "dine"].includes(w[i] as string))
 			return (
-				!PREPOSITIONS.has(before as string) &&
+				!prepositions.has(before as string) &&
 				// "bursdagen din igjen" is just a possessive
 				!/^\p{L}{2,}(en|et|a|ene)$/u.test(before as string) &&
-				!w.slice(i + 1).some((x) => TAIL_FILLERS.has(x))
+				!w.slice(i + 1).some((x) => tailFillers.has(x))
 			);
 	}
 	return false;
